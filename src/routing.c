@@ -1,0 +1,129 @@
+#include "routing.h"
+
+#include <assert.h>
+#include <limits.h>
+#include <string.h>
+#include <stdbool.h>
+#include <stdlib.h>
+
+#define IDBITS 160
+#define BUCKETSIZE 8
+// The 3 here is log2(BUCKETSIZE), since the final bucket will contain all those combinations
+#define BUCKETBITS 3
+#define ROUTINGSIZE (IDBITS * BUCKETSIZE)
+
+struct nodeid myID;
+struct entry table[ROUTINGSIZE];
+
+void routing_init(struct nodeid* myid) {
+	myID = *myid;
+}
+
+// Calculate the common bit prefix between two node ids.
+uint8_t prefix(struct nodeid* a, struct nodeid* b) {
+	uint8_t c = 0;
+	for(uint8_t i = 0; i < 5; i++) {
+		uint32_t word = a->inner[i] ^ b->inner[i];
+
+		// This word is different, find the location of the difference
+		if(word != 0)
+			return c + __builtin_clz(word);
+
+		// This word is completely the same
+		c += sizeof(word) * CHAR_BIT;
+	}
+
+	return c;
+}
+
+int8_t scan(uint16_t baseIndex, struct nodeid* id) {
+	assert(baseIndex < ROUTINGSIZE - BUCKETSIZE);
+	int8_t index = -1;
+
+	for(size_t i = baseIndex; i < baseIndex + BUCKETSIZE; i++) {
+		if(!table[i].set) {
+			index = index == -1 ? i - baseIndex : index;
+			continue;
+		}
+
+		if(memcmp(&table[i].id, id, sizeof(struct nodeid)) == 0) {
+			return -1;
+		}
+	}
+	
+	return index;
+}
+
+// Offer the routing table a new node
+bool routing_offer(struct nodeid* id, struct entry **dest) {
+	uint16_t bucketIndex = prefix(&myID, id);
+	// The nodeid is the same as our own
+	assert(bucketIndex != IDBITS);
+
+	// If they are sufficiently similar they end up in the final bucket. Clamp the index to ensure.
+	bucketIndex = bucketIndex > (IDBITS - BUCKETBITS) ? (IDBITS - BUCKETBITS) : bucketIndex;
+	assert(bucketIndex <= IDBITS - BUCKETBITS);
+
+	uint16_t baseIndex = bucketIndex * BUCKETSIZE;
+	int8_t inBucketIndex = scan(baseIndex, id);
+
+	if(inBucketIndex == -1) {
+		// The bucket either already contains the node, or it has no more space
+		dbg("discarding node");
+		return false;
+	}
+
+	struct entry* entry = &table[baseIndex + inBucketIndex];
+	entry->set = true;
+	entry->id = *id;
+
+	*dest = entry;
+	return true;
+}
+
+struct item {
+	struct nodeid distance;
+	bool set;
+	uint16_t index;
+};
+int compareItem(const void* a_v, const void* b_v) {
+	struct item* a = (struct item*)a_v;
+	struct item* b = (struct item*)b_v;
+
+	// If either of the two are not set, the one that is set comes before the
+	// one that isn't.
+	if(!a->set || !b->set) return b->set - a->set;
+
+	return memcmp(&a->distance, &b->distance, sizeof(struct nodeid));
+}
+
+size_t rounting_closest(struct nodeid* needle, size_t n, struct entry** res) {
+	assert(n <= ROUTINGSIZE);
+	static struct item items[ROUTINGSIZE] = {0};
+	for(uint16_t i = 0; i < ROUTINGSIZE; i++) {
+		items[i].index = i;
+	}
+
+	{
+		struct item* item;
+		struct entry* entry;
+		for(item = &items[0], entry = &table[0]; item < &items[ROUTINGSIZE] && entry < &table[ROUTINGSIZE]; item++, entry++){
+			item->set = entry->set;
+			for(uint8_t j = 0; j < 5; j++) {
+				item->distance.inner[j] = entry->id.inner[j] ^ needle->inner[j];
+			}
+		}
+	}
+
+	qsort(items, ROUTINGSIZE, sizeof(struct item), compareItem);
+
+	size_t read;
+	for(read = 0; read < n; read++) {
+		if(!items[read].set)
+			break;
+		res[read] = &table[items[read].index];
+	}
+
+	return read;
+}
+

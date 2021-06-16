@@ -1,6 +1,7 @@
 CC ?= gcc
 
 SRCDIR ?= src
+TSTDIR ?= test
 GENDIR ?= gen
 OBJDIR ?= obj
 
@@ -12,32 +13,32 @@ CFG = -std=gnu11 -fms-extensions -flto
 CFLAGS ?= -O3 -D_FORTIFY_SOURCE=2
 CFLAGS += -Wall
 
-SOURCES = $(shell find $(SRCDIR) -name "*.c")
-DEPS_C = $(OBJS_C:%.o=%.d)
-OBJS_C = $(SOURCES:%.c=$(OBJDIR)/%.o)
+APP_MAIN_SOURCES = src/main.c
+APP_SOURCES = $(filter-out $(APP_MAIN_SOURCES),$(shell find $(SRCDIR) -name "*.c"))
+APP_OBJS = $(APP_SOURCES:%.c=$(OBJDIR)/%.o)
+APP_MAIN_OBJS = $(APP_MAIN_SOURCES:%.c=$(OBJDIR)/%.o)
+APP_DEPS = $(APP_OBJS:%.o=%.d)
+APP_MAIN_DEPS = $(APP_MAIN_OBJS:%.o=%.d)
 
-FFGEN_SOURCES = $(wildcard ffgen/*.c)
-FFGEN_DEPS_C = $(FFGEN_OBJS_C:%.o=%.d)
-FFGEN_OBJS_C = $(FFGEN_SOURCES:%.c=$(OBJDIR)/%.o)
+TEST_LIB_SOURCES = thirdparty/Unity/src/unity.c
+TEST_LIB_OBJS = $(TEST_LIB_SOURCES:%.c=$(OBJDIR)/%.o)
+TEST_LIB_DEPS = $(TEST_LIB_SOURCES:%.c=%.d)
+TEST_LIB_INCS = -Ithirdparty/Unity/src
 
-.DEFAULT_GOAL := opz
+TEST_SOURCES = $(shell find $(TSTDIR) -name "*.c")
+TEST_EXES = $(TEST_SOURCES:%.c=$(OBJDIR)/%)
+TEST_DEPS = $(TEST_SOURCES:%.c=%.d)
 
 print-%  : ; @echo $* = $($*)
 
-src/.clang_complete: Makefile
-	@(for i in $(filter-out -O% -DNDEBUG, $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS)); do echo "$$i"; done) > $@
+-include $(APP_DEPS) $(TEST_LIB_DEPS) $(TEST_DEPS)
 
-opz: $(OBJS_C)
-	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJS_C) $(LIBS)
+# We don't really need to run the tests for bear to record them
+compile_commands.json: clean Makefile $(APP_SOURCES) $(TEST_LIB_SOURCES) $(TEST_SOURCES)
+	bear -- make $(TEST_EXES) dht
 
-$(OBJDIR)/ffgen/ffgen: $(FFGEN_OBJS_C)
-	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^
-
-$(GENDIR)/ffgen/opz.h: $(SRCDIR)/opz.ff $(OBJDIR)/ffgen/ffgen
-	@mkdir -p $(dir $@)
-	$(OBJDIR)/ffgen/ffgen <$< >$@
-
--include $(DEPS_C) $(FFGEN_DEPS_C)
+dht: $(APP_MAIN_OBJS) $(APP_OBJS)
+	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $(APP_MAIN_OBJS) $(APP_OBJS) $(LIBS)
 
 $(OBJDIR)/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -45,8 +46,35 @@ $(OBJDIR)/%.o: %.c
 
 clean:
 	@rm -rf $(OBJDIR)
-	@rm -f opz .clang_complete
+	@rm -f dht .compile_commands.json
 
 .PHONY: version
 version:
 	@echo "$(COMPTON_VERSION)"
+
+# Unit tests!
+
+# Run all tests
+.PHONY: test
+test: $(TEST_EXES)
+	$(foreach test,$(TEST_EXES),./$(test);)
+
+$(OBJDIR)/test/%: $(APP_OBJS) $(TEST_LIB_OBJS) $(OBJDIR)/test/%.o $(OBJDIR)/test/%.runner.o
+	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
+
+$(OBJDIR)/test/%.runner.c: test/%.c
+	@mkdir -p $(dir $@)
+	ruby thirdparty/Unity/auto/generate_test_runner.rb $< $@
+
+# Test code needs test includes
+$(OBJDIR)/test/%.o: test/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFG) $(CPPFLAGS) $(CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<
+
+# Generated test sources are located under obj 
+$(OBJDIR)/test/%.o: $(OBJDIR)/test/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFG) $(CPPFLAGS) $(CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<
+
+.DEFAULT_GOAL := all
+all: test dht
