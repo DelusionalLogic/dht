@@ -19,6 +19,10 @@ void routing_init(struct nodeid* myid) {
 	myID = *myid;
 }
 
+void routing_flush() {
+	memset(table, 0, sizeof(table));
+}
+
 // Calculate the common bit prefix between two node ids.
 uint8_t prefix(struct nodeid* a, struct nodeid* b) {
 	uint8_t c = 0;
@@ -58,7 +62,9 @@ int8_t scan(uint16_t baseIndex, struct nodeid* id) {
 bool routing_offer(struct nodeid* id, struct entry **dest) {
 	uint16_t bucketIndex = prefix(&myID, id);
 	// The nodeid is the same as our own
-	assert(bucketIndex != IDBITS);
+	if(bucketIndex == IDBITS) {
+		return false;
+	}
 
 	// If they are sufficiently similar they end up in the final bucket. Clamp the index to ensure.
 	bucketIndex = bucketIndex > (IDBITS - BUCKETBITS) ? (IDBITS - BUCKETBITS) : bucketIndex;
@@ -69,7 +75,6 @@ bool routing_offer(struct nodeid* id, struct entry **dest) {
 
 	if(inBucketIndex == -1) {
 		// The bucket either already contains the node, or it has no more space
-		dbg("discarding node");
 		return false;
 	}
 
@@ -97,7 +102,7 @@ int compareItem(const void* a_v, const void* b_v) {
 	return memcmp(&a->distance, &b->distance, sizeof(struct nodeid));
 }
 
-size_t rounting_closest(struct nodeid* needle, size_t n, struct entry** res) {
+size_t routing_closest(struct nodeid* needle, size_t n, struct entry** res) {
 	assert(n <= ROUTINGSIZE);
 	static struct item items[ROUTINGSIZE] = {0};
 	for(uint16_t i = 0; i < ROUTINGSIZE; i++) {
@@ -115,6 +120,9 @@ size_t rounting_closest(struct nodeid* needle, size_t n, struct entry** res) {
 		}
 	}
 
+	// @PERFORMANCE: There's an algorithm known as quickselect which can select
+	// the top k elements from a list while only doing a partial sort.
+	// I imagine that would be more efficient than this full sort.
 	qsort(items, ROUTINGSIZE, sizeof(struct item), compareItem);
 
 	size_t read;

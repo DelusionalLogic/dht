@@ -35,5 +35,6 @@ struct entry {
 };
 
 void routing_init(struct nodeid* myid);
+void routing_flush();
 bool routing_offer(struct nodeid* id, struct entry **dest);
-size_t rounting_closest(struct nodeid* needle, size_t n, struct entry** res);
+size_t routing_closest(struct nodeid* needle, size_t n, struct entry** res);

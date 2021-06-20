@@ -8,10 +8,9 @@ OBJDIR ?= obj
 LIBS = -lm
 INCS = -Isrc/ -Igen/ -I.
 
-CFG = -std=gnu11 -fms-extensions -flto
-
-CFLAGS ?= -O3 -D_FORTIFY_SOURCE=2
-CFLAGS += -Wall
+CFLAGS ?= -O3 -D_FORTIFY_SOURCE=2 -Wall
+# add all the required Cflags
+CFLAGS += -std=gnu11 -fms-extensions -flto
 
 APP_MAIN_SOURCES = src/main.c
 APP_SOURCES = $(filter-out $(APP_MAIN_SOURCES),$(shell find $(SRCDIR) -name "*.c"))
@@ -35,18 +34,19 @@ print-%  : ; @echo $* = $($*)
 
 # We don't really need to run the tests for bear to record them
 compile_commands.json: clean Makefile $(APP_SOURCES) $(TEST_LIB_SOURCES) $(TEST_SOURCES)
+	@rm -f "$@"
 	bear -- make $(TEST_EXES) dht
 
 dht: $(APP_MAIN_OBJS) $(APP_OBJS)
-	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $(APP_MAIN_OBJS) $(APP_OBJS) $(LIBS)
+	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $(APP_MAIN_OBJS) $(APP_OBJS) $(LIBS)
 
 $(OBJDIR)/%.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFG) $(CPPFLAGS) $(CFLAGS) $(INCS) -MMD -o $@ -c $<
+	$(CC) $(CFLAGS) $(INCS) -MMD -o $@ -c $<
 
 clean:
 	@rm -rf $(OBJDIR)
-	@rm -f dht .compile_commands.json
+	@rm -f dht
 
 .PHONY: version
 version:
@@ -60,7 +60,7 @@ test: $(TEST_EXES)
 	$(foreach test,$(TEST_EXES),./$(test);)
 
 $(OBJDIR)/test/%: $(APP_OBJS) $(TEST_LIB_OBJS) $(OBJDIR)/test/%.o $(OBJDIR)/test/%.runner.o
-	$(CC) $(CFG) $(CPPFLAGS) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
+	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
 
 $(OBJDIR)/test/%.runner.c: test/%.c
 	@mkdir -p $(dir $@)
@@ -69,12 +69,12 @@ $(OBJDIR)/test/%.runner.c: test/%.c
 # Test code needs test includes
 $(OBJDIR)/test/%.o: test/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFG) $(CPPFLAGS) $(CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<
+	$(CC) $(CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<
 
 # Generated test sources are located under obj 
 $(OBJDIR)/test/%.o: $(OBJDIR)/test/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFG) $(CPPFLAGS) $(CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<
+	$(CC) $(CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<
 
 .DEFAULT_GOAL := all
 all: test dht
