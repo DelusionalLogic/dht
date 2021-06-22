@@ -6,6 +6,30 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+// The DHT routing table has a keyspace of 0 -- 2^160 split into buckets of 8.
+// When a bucket becomes full, we split it in half. As we further expand the
+// routing table we only continue to split the buckets on the side we fall on.
+//
+// Initially, this may sound like a binary tree (because we split it in two),
+// but looking at it as a flat array leads to some interesting intuitions.
+// Since we only expand one half of the "tree", the total size is bounded by
+// the depth of the tree log2(2^160) == 160.
+//
+// As a flat array we notice the intrinsic properties of the routing table.
+// With a bucket size of 8, the routing table contains 160 * 8 == 1280 nodes.
+// As the node ids get less similar to our own our grouping of them becomes
+// less detailed. While the bucket we are in contains node very close to us,
+// the nodes furthest away from us are grouped in buckets with nodes they
+// barely resemble.
+//
+// +----------------------------+
+// | n1 | n2 | n3 | ... | n1280 |
+// +----------------------------+
+//   More                  Less
+//  <--------Similarity-------->
+//  <----------Detail---------->
+//
+
 #define IDBITS 160
 #define BUCKETSIZE 8
 // The 3 here is log2(BUCKETSIZE), since the final bucket will contain all those combinations
