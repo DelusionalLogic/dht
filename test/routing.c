@@ -91,3 +91,54 @@ void test_discard_offer_when_nodeid_added_twice() {
 	bool accept = routing_offer(&new, &entry);
 	TEST_ASSERT_FALSE_MESSAGE(accept, "Accepted entry when bucket was full");
 }
+
+void test_interested_when_space_in_bucket() {
+	routing_flush();
+
+	struct nodeid new = self;
+	new.inner[4] ^= 0x00000001;
+
+	bool interest = routing_interested(&new);
+
+	TEST_ASSERT_TRUE_MESSAGE(interest, "Was not interested in node");
+}
+
+void test_not_interested_when_nodeid_in_table() {
+	routing_flush();
+
+	struct nodeid new = self;
+	new.inner[4] ^= 0x00000001;
+
+	struct entry* entry;
+	TEST_ASSERT_TRUE(routing_offer(&new, &entry));
+	entry->addr = (struct addr){.ip = IP(128,0,0,1), .port = 0};
+	entry->last = time(NULL);
+
+	bool interest = routing_interested(&new);
+	TEST_ASSERT_FALSE_MESSAGE(interest, "Was interested in node");
+}
+
+void test_not_interested_when_bucket_is_full() {
+	routing_flush();
+
+	// The address we are going to store
+	struct addr addr = (struct addr){.ip = IP(128,0,0,1), .port = 0};
+
+	struct nodeid new = self;
+	// Flip the top bit of the id to go into the low resolution bucket
+	new.inner[0] ^= 0x80000000;
+
+	// Fill up the bucket with entries
+	for(uint8_t i = 0; i < 8; i++) {
+		struct entry* entry;
+		TEST_ASSERT_TRUE_MESSAGE(routing_offer(&new, &entry), "Did not accept new entry");
+
+		// Set the entries
+		entry->addr = addr;
+		entry->last = time(NULL);
+
+		new.inner[4] += 1;
+	}
+
+	TEST_ASSERT_FALSE_MESSAGE(routing_interested(&new), "Still interested when bucket was full");
+}

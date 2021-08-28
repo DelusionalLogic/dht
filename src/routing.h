@@ -6,18 +6,6 @@
 #include <time.h>
 #include <stdio.h>
 
-#define dbg(format, ...) \
-	dbgl(format "\n", ##  __VA_ARGS__)
-
-#define dbgl(format, ...) \
-	printf(format, ## __VA_ARGS__); \
-	fflush(stderr)
-
-#define err(format, ...) \
-	printf(format "\n", ## __VA_ARGS__); \
-	fflush(stderr)
-
-
 struct addr {
 	uint32_t ip;
 	uint16_t port;
@@ -36,5 +24,6 @@ struct entry {
 
 void routing_init(struct nodeid* myid);
 void routing_flush();
+bool routing_interested(struct nodeid* id);
 bool routing_offer(struct nodeid* id, struct entry **dest);
 size_t routing_closest(struct nodeid* needle, size_t n, struct entry** res);

@@ -82,6 +82,28 @@ int8_t scan(uint16_t baseIndex, struct nodeid* id) {
 	return index;
 }
 
+bool routing_interested(struct nodeid* id) {
+	uint16_t bucketIndex = prefix(&myID, id);
+	// The nodeid is the same as our own
+	if(bucketIndex == IDBITS) {
+		return false;
+	}
+
+	// If they are sufficiently similar they end up in the final bucket. Clamp the index to ensure.
+	bucketIndex = bucketIndex > (IDBITS - BUCKETBITS) ? (IDBITS - BUCKETBITS) : bucketIndex;
+	assert(bucketIndex <= IDBITS - BUCKETBITS);
+
+	uint16_t baseIndex = bucketIndex * BUCKETSIZE;
+	int8_t inBucketIndex = scan(baseIndex, id);
+
+	if(inBucketIndex == -1) {
+		// The bucket either already contains the node, or it has no more space
+		return false;
+	}
+
+	return true;
+}
+
 // Offer the routing table a new node
 bool routing_offer(struct nodeid* id, struct entry **dest) {
 	uint16_t bucketIndex = prefix(&myID, id);
