@@ -13,8 +13,9 @@
 	printf(format "\n", ## __VA_ARGS__); \
 	fflush(stderr)
 
-#define fatal(format, ...) \
-	printf(format "\n", ## __VA_ARGS__); \
-	fflush(stderr); \
-	abort()
+#define fatal(format, ...) do{\
+		printf(format "\n", ## __VA_ARGS__); \
+		fflush(stderr); \
+		abort(); \
+	} while(0)
 

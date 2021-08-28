@@ -231,136 +231,115 @@ void test_find_key_under_cursor() {
 	struct benc_node stream[4];
 	char* packet = "d1:ri1ee";
 
-	const char* cursor = packet;
-	int depth = 0;
-	int64_t len = benc_decode(&cursor, cursor + strlen(packet), &depth, stream, 4);
+	struct bcursor bcursor;
+	bcur_open(&bcursor, packet, packet+strlen(packet), stream, 4);
+	bcur_next(&bcursor, 1); // Skip the dict token
 
-
-	const struct benc_node* stream_cursor = stream;
-	stream_cursor++; // Skip the dict
-	ssize_t found = skip_to_key(&stream_cursor, stream+len, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"r"}, (const size_t[]){1}, 1);
+	ssize_t found = bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"r"}, (const size_t[]){1}, 1);
 
 	TEST_ASSERT_EQUAL(0, found);
-	TEST_ASSERT_EQUAL_PTR(stream+1, stream_cursor);
+	TEST_ASSERT_EQUAL_PTR(stream+1, bcursor.readhead);
 }
 
 void test_key_not_found() {
 	struct benc_node stream[4];
 	char* packet = "d1:ri1ee";
 
-	const char* cursor = packet;
-	int depth = 0;
-	int64_t len = benc_decode(&cursor, cursor + strlen(packet), &depth, stream, 4);
+	struct bcursor bcursor;
+	bcur_open(&bcursor, packet, packet+strlen(packet), stream, 4);
+	bcur_next(&bcursor, 1); // Skip the dict token
 
-
-	const struct benc_node* stream_cursor = stream;
-	stream_cursor++; // Skip the dict
-	ssize_t found = skip_to_key(&stream_cursor, stream+len, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"a"}, (const size_t[]){1}, 1);
+	ssize_t found = bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"a"}, (const size_t[]){1}, 1);
 
 	TEST_ASSERT_EQUAL(-1, found);
-	TEST_ASSERT_EQUAL_PTR(stream+3, stream_cursor);
+	TEST_ASSERT_EQUAL_PTR(stream+3, bcursor.readhead);
 }
 
 void test_skip_nested_list_value() {
 	struct benc_node stream[8];
 	char* packet = "d1:al1:re1:ri1ee";
 
-	const char* cursor = packet;
-	int depth = 0;
-	int64_t len = benc_decode(&cursor, cursor + strlen(packet), &depth, stream, 8);
+	struct bcursor bcursor;
+	bcur_open(&bcursor, packet, packet+strlen(packet), stream, 8);
+	bcur_next(&bcursor, 1); // Skip the dict token
 
-
-	const struct benc_node* stream_cursor = stream;
-	stream_cursor++; // We know the first is a dict
-	ssize_t found = skip_to_key(&stream_cursor, stream+len, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"r"}, (const size_t[]){1}, 1);
+	ssize_t found = bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"r"}, (const size_t[]){1}, 1);
 
 	TEST_ASSERT_EQUAL(0, found);
-	TEST_ASSERT_EQUAL_PTR(stream+5, stream_cursor);
+	TEST_ASSERT_EQUAL_PTR(stream+5, bcursor.readhead);
 }
 
 void test_skip_nested_dict_value() {
 	struct benc_node stream[9];
 	char* packet = "d1:adi2e1:re1:ri1ee";
 
-	const char* cursor = packet;
-	int depth = 0;
-	int64_t len = benc_decode(&cursor, cursor + strlen(packet), &depth, stream, 9);
+	struct bcursor bcursor;
+	bcur_open(&bcursor, packet, packet+strlen(packet), stream, 9);
+	bcur_next(&bcursor, 1); // Skip the dict token
 
-	const struct benc_node* stream_cursor = stream;
-	stream_cursor++; // We know the first is a dict
-	ssize_t found = skip_to_key(&stream_cursor, stream+len, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"r"}, (const size_t[]){1}, 1);
+	ssize_t found = bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"r"}, (const size_t[]){1}, 1);
 
 	TEST_ASSERT_EQUAL(0, found);
-	TEST_ASSERT_EQUAL_PTR(stream+6, stream_cursor);
+	TEST_ASSERT_EQUAL_PTR(stream+6, bcursor.readhead);
 }
 
 void test_skip_nested_dict_key() {
 	struct benc_node stream[9];
 	char* packet = "d1:ad1:ri2ee1:ri1ee";
 
-	const char* cursor = packet;
-	int depth = 0;
-	int64_t len = benc_decode(&cursor, cursor + strlen(packet), &depth, stream, 9);
+	struct bcursor bcursor;
+	bcur_open(&bcursor, packet, packet+strlen(packet), stream, 9);
+	bcur_next(&bcursor, 1); // Skip the dict token
 
-	const struct benc_node* stream_cursor = stream;
-	stream_cursor++; // We know the first is a dict
-	ssize_t found = skip_to_key(&stream_cursor, stream+len, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"r"}, (const size_t[]){1}, 1);
+	ssize_t found = bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"r"}, (const size_t[]){1}, 1);
 
 	TEST_ASSERT_EQUAL(0, found);
-	TEST_ASSERT_EQUAL_PTR(stream+6, stream_cursor);
+	TEST_ASSERT_EQUAL_PTR(stream+6, bcursor.readhead);
 }
 
 void test_skip_multilevel_list() {
 	struct benc_node stream[9];
 	char* packet = "d1:all1:ree1:ri1ee";
 
-	const char* cursor = packet;
-	int depth = 0;
-	int64_t len = benc_decode(&cursor, cursor + strlen(packet), &depth, stream, 9);
+	struct bcursor bcursor;
+	bcur_open(&bcursor, packet, packet+strlen(packet), stream, 9);
+	bcur_next(&bcursor, 1); // Skip the dict token
 
-	const struct benc_node* stream_cursor = stream;
-	stream_cursor++; // We know the first is a dict
-	ssize_t found = skip_to_key(&stream_cursor, stream+len, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"r"}, (const size_t[]){1}, 1);
+	ssize_t found = bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"r"}, (const size_t[]){1}, 1);
 
 	TEST_ASSERT_EQUAL(0, found);
-	TEST_ASSERT_EQUAL_PTR(stream+7, stream_cursor);
+	TEST_ASSERT_EQUAL_PTR(stream+7, bcursor.readhead);
 }
 
 void test_find_any_semantics() {
 	struct benc_node stream[9];
 	char* packet = "d1:a1:a1:b1:be";
 
-	const char* cursor = packet;
-	int depth = 0;
-	int64_t len = benc_decode(&cursor, cursor + strlen(packet), &depth, stream, 9);
+	struct bcursor bcursor;
+	bcur_open(&bcursor, packet, packet+strlen(packet), stream, 9);
+	bcur_next(&bcursor, 1); // Skip the dict token
 
-	const struct benc_node* stream_cursor = stream;
-	stream_cursor++; // We know the first is a dict
-	ssize_t found = skip_to_key(&stream_cursor, stream+len, (const enum benc_nodetype[]){BNT_STRING, BNT_STRING}, (const char*[]){"b", "a"}, (const size_t[]){1, 1}, 2);
+	ssize_t found = bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING, BNT_STRING}, (const char*[]){"b", "a"}, (const size_t[]){1, 1}, 2);
 
 	TEST_ASSERT_EQUAL(1, found);
-	TEST_ASSERT_EQUAL_PTR(stream+1, stream_cursor);
+	TEST_ASSERT_EQUAL_PTR(stream+1, bcursor.readhead);
 
-	stream_cursor+=2; // Skip the key and value
-	found = skip_to_key(&stream_cursor, stream+len, (const enum benc_nodetype[]){BNT_STRING, BNT_STRING}, (const char*[]){"b", "a"}, (const size_t[]){1, 1}, 2);
+	bcur_next(&bcursor, 2); // Skip the dict token
+	found = bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING, BNT_STRING}, (const char*[]){"b", "a"}, (const size_t[]){1, 1}, 2);
 	TEST_ASSERT_EQUAL(0, found);
-	TEST_ASSERT_EQUAL_PTR(stream+3, stream_cursor);
+	TEST_ASSERT_EQUAL_PTR(stream+3, bcursor.readhead);
 }
 
 void test_stop_at_end() {
 	struct benc_node stream[9];
 	char* packet = "ld1:a1:aee";
 
-	const char* cursor = packet;
-	int depth = 0;
-	int64_t len = benc_decode(&cursor, cursor + strlen(packet), &depth, stream, 9);
+	struct bcursor bcursor;
+	bcur_open(&bcursor, packet, packet+strlen(packet), stream, 9);
+	bcur_next(&bcursor, 2); // Skip the dict token
 
-	const struct benc_node* stream_cursor = stream;
-	stream_cursor++; // We know the first is a list
-	stream_cursor++; // We know the second is a dict
-	// X does not exist in the packet
-	ssize_t found = skip_to_key(&stream_cursor, stream+len, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"x"}, (const size_t[]){1}, 1);
+	ssize_t found = bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"x"}, (const size_t[]){1}, 1);
 
 	TEST_ASSERT_EQUAL_MESSAGE(-1, found, "Found something");
-	TEST_ASSERT_EQUAL_PTR_MESSAGE(stream+4, stream_cursor, "Didn't stop at dict end");
+	TEST_ASSERT_EQUAL_PTR_MESSAGE(stream+4, bcursor.readhead, "Didn't stop at dict end");
 }

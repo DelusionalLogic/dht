@@ -337,28 +337,36 @@ int main(int argc, char** argv) {
 
 		struct benc_node* stream_cursor = stream;
 		if(stream_cursor->type != BNT_DICT) {
-			err("Response is not a dict");
-			exit(EXIT_FAILURE);
+			fatal("First value is not a dict");
 		}
 		stream_cursor++;
 
 		if(skip_to_key((const struct benc_node**)&stream_cursor, stream+len, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"t"}, (const size_t[]){1}, 1) == -1) {
-			err("No t key in packet");
-			exit(EXIT_FAILURE);
+			fatal("No t key in packet");
 		}
 		stream_cursor++;
 
-		char char_buffer = stream_cursor->loc[stream_cursor->size];
-		((char*)stream_cursor->loc)[stream_cursor->size] = '\0';
-		uint32_t transaction = strtol(stream_cursor->loc, NULL, 10);
-		((char*)stream_cursor->loc)[stream_cursor->size] = char_buffer;
+		uint32_t transaction;
+		{
+			// Temporary null terminate the string to parse the number without a copy
+			char char_buffer = stream_cursor->loc[stream_cursor->size];
+			((char*)stream_cursor->loc)[stream_cursor->size] = '\0';
+			char* end;
+			transaction = strtol(stream_cursor->loc, &end, 10);
+			((char*)stream_cursor->loc)[stream_cursor->size] = char_buffer;
+
+			if(end != stream_cursor->loc+stream_cursor->size) {
+				dbg("DISCARD: Transaction id is not a number %.*s", stream_cursor->size, stream->loc);
+				continue;
+			}
+		}
 
 		uint16_t reqId;
 		if(!find_req(transaction, &reqId)) {
-			err("No request with transaction ID %d", transaction);
-			exit(EXIT_FAILURE);
+			dbg("DISCARD: unknown transaction id %d", transaction);
+			continue;
 		}
-		dbg("Transaction id matches requst %d", reqId);
+		dbg("Transaction id matches request %d", reqId);
 
 		if(sockaddr_cmp(&requestdata[reqId].addr, (struct sockaddr*)&remote) != 0) {
 			err("Unexpected IP for valid transaction");

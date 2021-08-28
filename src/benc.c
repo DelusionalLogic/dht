@@ -175,6 +175,102 @@ int64_t benc_decode(const char** cursor, const char* end, int* depth, struct ben
 	return cursor_out;
 }
 
+int bcur_fill(struct bcursor* cursor) {
+	if(cursor->source == cursor->source_end) {
+		return EOF;
+	}
+
+	int read = benc_decode(&cursor->source, cursor->source_end, &cursor->source_depth, cursor->base, cursor->base_len);
+	cursor->end = cursor->base + read;
+
+	return 0;
+}
+
+int bcur_open(struct bcursor* cursor, const char* source, const char* source_end, struct benc_node* buffer, size_t buffer_len) {
+	cursor->source = source;
+	(*((const char**)&cursor->source_end)) = source_end;
+	cursor->source_depth = 0;
+
+	*((struct benc_node**)&cursor->base) = buffer;
+	*((size_t*)&cursor->base_len) = buffer_len;
+	cursor->readhead = buffer;
+
+	return bcur_fill(cursor);
+}
+
+int bcur_next(struct bcursor* cursor, uint32_t steps) {
+	cursor->readhead+=steps;
+
+	// Check if we need to read more
+	if(cursor->readhead >= cursor->end) {
+		return bcur_fill(cursor);
+	}
+	return 0;
+}
+
+int bcur_next_sibling(struct bcursor* cursor) {
+	assert(cursor->readhead->type == BNT_LIST || cursor->readhead->type == BNT_DICT);
+
+	if(cursor->readhead->type == BNT_LIST || cursor->readhead->type == BNT_DICT) {
+		uint32_t tdepth = cursor->readhead->depth;
+		cursor->readhead++;
+		while(cursor->readhead->type != BNT_END || cursor->readhead->depth != tdepth) {
+			if(bcur_next(cursor, 1) != 0) {
+				fatal("Invalid dict/list");
+			}
+		}
+	}
+
+	return bcur_next(cursor, 1);
+}
+
+// All the arrays should be equal length
+ssize_t bcur_find_key(struct bcursor* cursor, const enum benc_nodetype* keyTypes, const char** keyValues, const size_t* keyLengths, const size_t keys) {
+	// @ROBUSTNESS: Check if keytypes are anything but strings and ints because that is not supported
+	int rc;
+
+	while(true) {
+		// Skip lists
+		if(cursor->readhead->type == BNT_LIST || cursor->readhead->type == BNT_DICT) {
+			rc = bcur_next_sibling(cursor);
+			if(rc != 0) {
+				fatal("Invalid dict");
+			}
+		} else {
+			// Check if the key one of the ones we are looking for
+			for(size_t i = 0; i < keys; i++) {
+				if(cursor->readhead->type == keyTypes[i] && memcmp(cursor->readhead->loc, keyValues[i], MIN(cursor->readhead->size, keyLengths[i])) == 0) {
+					return i;
+				}
+			}
+		}
+
+		// Skip the key part
+		rc = bcur_next(cursor, 1);
+		if(rc != 0) {
+			fatal("Invalid dict");
+		}
+
+		if(cursor->readhead->type == BNT_LIST || cursor->readhead->type == BNT_DICT) {
+			// Skip a multitoken element
+			rc = bcur_next_sibling(cursor);
+			if(rc != 0) {
+				fatal("Invalid dict");
+			}
+		} else {
+			// Skip a single token element
+			rc = bcur_next(cursor, 1);
+			if(rc != 0) {
+				fatal("Invalid dict");
+			}
+		}
+
+		if(cursor->readhead->type == BNT_END) {
+			return -1;
+		}
+	}
+}
+
 void skip_sibling(const struct benc_node** cursor, const struct benc_node* end) {
 	assert((*cursor)->type == BNT_LIST || (*cursor)->type == BNT_DICT);
 
@@ -204,7 +300,7 @@ ssize_t skip_to_key(const struct benc_node** cursor, const struct benc_node* end
 
 	while(true) {
 		if(*cursor > end-1) {
-			fatal("Invalid dict");
+			return -1;
 		}
 
 		// Skip lists
