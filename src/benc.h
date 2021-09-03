@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <unistd.h>
 
+#define BENC_EBADP 1
+
 enum benc_nodetype {
 	BNT_INT,
 	BNT_STRING,
@@ -24,7 +26,7 @@ struct benc_node {
 
 bool readint(const char** loc, int64_t* val);
 
-void benc_print(const struct benc_node* stream, size_t stream_len, int* depth);
+void benc_print(const struct benc_node* stream, size_t stream_len);
 int64_t benc_decode(const char** cursor, const char* end, int* depth, struct benc_node* stream, size_t stream_len);
 
 struct bcursor {

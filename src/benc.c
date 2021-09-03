@@ -49,19 +49,20 @@ void indent(int depth) {
 	}
 }
 
-void benc_print(const struct benc_node* stream, size_t stream_len, int* depth) {
+void benc_print(const struct benc_node* stream, size_t stream_len) {
+	int depth;
 	const struct benc_node* cursor = stream;
 	for(; cursor < stream + stream_len; cursor++) {
 		switch(cursor->type) {
 			case BNT_INT:
-				indent(*depth);
+				indent(depth);
 				printf("INT %.*s\n", cursor->size, cursor->loc);
 				break;
 			case BNT_STRING:
-				indent(*depth);
+				indent(depth);
 				bool allprint = true;
 				for (const char* c = cursor->loc; c < cursor->loc + cursor->size; c++) {
-					if(!isalnum(*c)) {
+					if(!isalnum(*c) && *c != '_') {
 						allprint = false;
 						break;
 					}
@@ -77,18 +78,18 @@ void benc_print(const struct benc_node* stream, size_t stream_len, int* depth) {
 				printf("\n");
 				break;
 			case BNT_LIST:
-				indent(*depth);
+				indent(depth);
 				printf("LIST\n");
-				*depth = cursor->depth + 1;
+				depth = cursor->depth + 1;
 				break;
 			case BNT_DICT:
-				indent(*depth);
+				indent(depth);
 				printf("DICT\n");
-				*depth = cursor->depth + 1;
+				depth = cursor->depth + 1;
 				break;
 			case BNT_END:
-				*depth = cursor->depth;
-				indent(*depth);
+				depth = cursor->depth;
+				indent(depth);
 				printf("END\n");
 				break;
 		}
@@ -105,16 +106,16 @@ int64_t benc_decode(const char** cursor, const char* end, int* depth, struct ben
 			node->type = BNT_INT;
 			(*cursor)++;
 			if(*cursor >= end) {
-				return -cursor_out;
+				return -BENC_EBADP;
 			}
 			node->loc = *cursor;
 			while(**cursor != 'e') {
 				if(**cursor != '-' && !digit(**cursor)) {
-					return -cursor_out;
+					return -BENC_EBADP;
 				}
 				(*cursor)++;
 				if(*cursor >= end) {
-					return -cursor_out;
+					return -BENC_EBADP;
 				}
 			}
 			node->size = *cursor - node->loc;
@@ -126,7 +127,7 @@ int64_t benc_decode(const char** cursor, const char* end, int* depth, struct ben
 			node->loc = *cursor;
 			(*cursor)++;
 			if(*cursor >= end) {
-				return -cursor_out;
+				return -BENC_EBADP;
 			}
 		} else if(**cursor == 'd') {
 			node->type = BNT_DICT;
@@ -135,7 +136,7 @@ int64_t benc_decode(const char** cursor, const char* end, int* depth, struct ben
 			node->loc = *cursor;
 			(*cursor)++;
 			if(*cursor >= end) {
-				return -cursor_out;
+				return -BENC_EBADP;
 			}
 		} else if(**cursor == 'e') {
 			node->type = BNT_END;
@@ -149,23 +150,23 @@ int64_t benc_decode(const char** cursor, const char* end, int* depth, struct ben
 			bool rc = readint(cursor, &val);
 			node->size = val;
 			if(*cursor >= end) {
-				return -cursor_out;
+				return -BENC_EBADP;
 			}
 			assert(rc);
 			if(**cursor != ':') {
-				return -cursor_out;
+				return -BENC_EBADP;
 			}
 			(*cursor)++;
 			if(*cursor >= end) {
-				return -cursor_out;
+				return -BENC_EBADP;
 			}
 			node->loc = *cursor;
 			(*cursor) += node->size;
 			if(*cursor > end) {
-				return -cursor_out;
+				return -BENC_EBADP;
 			}
 		} else {
-			return -cursor_out;
+			return -BENC_EBADP;
 			dbg("Failing on char \"%c\"", **cursor);
 			assert(false);
 		}
@@ -175,12 +176,24 @@ int64_t benc_decode(const char** cursor, const char* end, int* depth, struct ben
 	return cursor_out;
 }
 
-int bcur_fill(struct bcursor* cursor) {
+int bcur_fill(struct bcursor* cursor, size_t ignoring) {
 	if(cursor->source == cursor->source_end) {
 		return EOF;
 	}
 
-	int read = benc_decode(&cursor->source, cursor->source_end, &cursor->source_depth, cursor->base, cursor->base_len);
+	int read;
+	while(true) {
+		read = benc_decode(&cursor->source, cursor->source_end, &cursor->source_depth, cursor->base, cursor->base_len);
+		if(read < 0) {
+			return EINVAL;
+		}
+		if(read > ignoring) {
+			break;
+		}
+		ignoring -= read;
+	}
+
+	cursor->readhead = cursor->base + ignoring;
 	cursor->end = cursor->base + read;
 
 	return 0;
@@ -195,16 +208,16 @@ int bcur_open(struct bcursor* cursor, const char* source, const char* source_end
 	*((size_t*)&cursor->base_len) = buffer_len;
 	cursor->readhead = buffer;
 
-	return bcur_fill(cursor);
+	return bcur_fill(cursor, 0);
 }
 
 int bcur_next(struct bcursor* cursor, uint32_t steps) {
-	cursor->readhead+=steps;
+	cursor->readhead += steps;
 
-	// Check if we need to read more
 	if(cursor->readhead >= cursor->end) {
-		return bcur_fill(cursor);
+		return bcur_fill(cursor, cursor->readhead - cursor->end);
 	}
+
 	return 0;
 }
 

@@ -26,7 +26,7 @@ void test_unfinished_string() {
 	int depth = 0;
 	int64_t len = benc_decode(&cursor, cursor + strlen(packet), &depth, stream, 1);
 
-	TEST_ASSERT_EQUAL(0, len);
+	TEST_ASSERT_EQUAL(-BENC_EBADP, len);
 	TEST_ASSERT_EQUAL(BNT_STRING, stream[0].type);
 	TEST_ASSERT_EQUAL(4, stream[0].size);
 	TEST_ASSERT_EQUAL_PTR(packet + 2, stream[0].loc);
@@ -70,7 +70,7 @@ void test_unfinished_int() {
 	int depth = 0;
 	int64_t len = benc_decode(&cursor, cursor + strlen(packet), &depth, stream, 1);
 
-	TEST_ASSERT_EQUAL(0, len);
+	TEST_ASSERT_EQUAL(-BENC_EBADP, len);
 	TEST_ASSERT_EQUAL(BNT_INT, stream[0].type);
 	TEST_ASSERT_EQUAL_PTR(packet + 1, stream[0].loc);
 }
@@ -98,7 +98,7 @@ void test_incorrect_int_char() {
 	int64_t len = benc_decode(&cursor, cursor + strlen(packet), &depth, stream, 1);
 
 	TEST_ASSERT_EQUAL(packet + 2, cursor);
-	TEST_ASSERT_EQUAL(0, len);
+	TEST_ASSERT_EQUAL(-BENC_EBADP, len);
 	TEST_ASSERT_EQUAL(BNT_INT, stream[0].type);
 	TEST_ASSERT_EQUAL_PTR(packet + 1, stream[0].loc);
 }
@@ -147,6 +147,17 @@ void test_dict() {
 	TEST_ASSERT_EQUAL(0, stream[nodeCursor].depth);
 	TEST_ASSERT_EQUAL_PTR(packet + 7, stream[nodeCursor].loc);
 	nodeCursor++;
+}
+
+void test_dict_without_end() {
+	struct benc_node stream[4];
+	char* packet = "d";
+
+	const char* cursor = packet;
+	int depth = 0;
+	int64_t len = benc_decode(&cursor, cursor + strlen(packet), &depth, stream, 4);
+
+	TEST_ASSERT_EQUAL(-1, len);
 }
 
 void test_nested_list() {
@@ -342,4 +353,22 @@ void test_stop_at_end() {
 
 	TEST_ASSERT_EQUAL_MESSAGE(-1, found, "Found something");
 	TEST_ASSERT_EQUAL_PTR_MESSAGE(stream+4, bcursor.readhead, "Didn't stop at dict end");
+}
+
+void test_find_key_with_small_token_buffer() {
+	struct benc_node stream[1];
+	char* packet = "d1:a1:a1:b1:b1:c1:ce";
+
+	struct bcursor bcursor;
+	bcur_open(&bcursor, packet, packet+strlen(packet), stream, 1);
+	bcur_next(&bcursor, 1); // Skip the dict token
+
+	ssize_t found = bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"c"}, (const size_t[]){1}, 1);
+
+	TEST_ASSERT_EQUAL(0, found);
+	TEST_ASSERT_EQUAL(BNT_STRING, bcursor.readhead->type);
+	TEST_ASSERT_EQUAL(1, bcursor.readhead->size);
+	TEST_ASSERT_EQUAL_STRING_LEN("c", bcursor.readhead->loc, 1);
+	bcur_next(&bcursor, 2);
+	TEST_ASSERT_EQUAL(BNT_END, bcursor.readhead->type);
 }

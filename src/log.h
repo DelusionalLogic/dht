@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #define dbg(format, ...) \
 	dbgl(format "\n", ##  __VA_ARGS__)

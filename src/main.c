@@ -1,5 +1,6 @@
 #include "routing.h"
 #include "benc.h"
+#include "query.h"
 #include "log.h"
 
 #include <errno.h>
@@ -108,7 +109,21 @@ bool find_req(uint32_t transId, uint16_t* reqId) {
 
 void getclient_response(struct nodeid* self, char* packet, size_t packet_len, int socket, struct sockaddr_in* remote, socklen_t remote_len);
 
+uint8_t rand_byte() {
+	int limit = RAND_MAX - (RAND_MAX % UINT8_MAX);
+	int val;
+	while((val = rand()) > limit);
+
+	return val;
+}
+
 int send_ping(struct nodeid* self, const int sfd, const struct sockaddr* dest_addr, socklen_t dest_len) {
+	// Generate a random target
+	struct nodeid target;
+	for(uint8_t *target_byte = (uint8_t*)&target; target_byte < ((uint8_t*)&target)+sizeof(target); target_byte++) {
+		*target_byte = rand_byte();
+	}
+
 	uint16_t reqId;
 	if(!alloc_req(&reqId)) {
 		return ENOBUFS;
@@ -121,19 +136,25 @@ int send_ping(struct nodeid* self, const int sfd, const struct sockaddr* dest_ad
 	requestdata[reqId].addr = *dest_addr;
 
 	int rc = snprintf(buff+i, 128-i, "d1:ad2:id20:");
+	if(rc < 0)
+		return EPERM;
 	i += rc;
 	memcpy(buff+i, self, sizeof(struct nodeid));
 	i += sizeof(struct nodeid);
-	rc = snprintf(buff+i, 128-i, "6:target20:mnopqrstuvwxyz123456e1:q9:find_node1:t%d:%d1:y1:qe", (reqId/10)+1, reqId);
+	rc = snprintf(buff+i, 128-i, "6:target20:");
+	if(rc < 0)
+		return EPERM;
+	i += rc;
+	memcpy(buff+i, &target, sizeof(struct nodeid));
+	i += sizeof(struct nodeid);
+	rc = snprintf(buff+i, 128-i, "e1:q9:find_node1:t%d:%d1:y1:qe", (reqId/10)+1, reqId);
+	if(rc < 0)
+		return EPERM;
 	i += rc;
 
 	//now reply the client with the same data
 	rc = sendto(sfd, buff, i, 0, dest_addr, dest_len);
 	if (rc == -1) {
-		switch(errno) {
-			case EWOULDBLOCK: case EBADF:
-				return rc;
-		}
 		return EPERM; // Operation not permitted is used as the default "generic" error
 	}
 
@@ -142,11 +163,10 @@ int send_ping(struct nodeid* self, const int sfd, const struct sockaddr* dest_ad
 
 void getclient_response(struct nodeid* self, char* packet, size_t packet_len, int socket, struct sockaddr_in* remote, socklen_t remote_len) {
 	struct benc_node stream[256];
-	const char* cursor = packet;
-	int depth = 0;
-	int len = benc_decode(&cursor, packet+packet_len, &depth, stream, 256);
+	struct bcursor bcursor;
+	bcur_open(&bcursor, packet, packet+packet_len, stream, 256);
 
-	if(len <= 0) {
+	if(bcursor.end - bcursor.readhead <= 0) {
 		err("Reponse too short");
 		exit(EXIT_FAILURE);
 	}
@@ -161,73 +181,71 @@ void getclient_response(struct nodeid* self, char* packet, size_t packet_len, in
 	// Read the payload
 	{
 		// Check that we have a dict
-		struct benc_node* cursor = stream;
-		if(cursor->type != BNT_DICT) {
+		if(bcursor.readhead->type != BNT_DICT) {
 			err("Response is not a dict");
 			exit(EXIT_FAILURE);
 		}
-		cursor++;
+		bcur_next(&bcursor, 1);
 
-		skip_to_key((const struct benc_node**)&cursor, stream+len, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"r"}, (const size_t[]){1}, 1);
+		bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"r"}, (const size_t[]){1}, 1);
 		// Skip the key
-		cursor++;
+		bcur_next(&bcursor, 1);
 
-		if(cursor->type != BNT_DICT) {
+		if(bcursor.readhead->type != BNT_DICT) {
 			err("Wrong value type for response");
 			exit(EXIT_FAILURE);
 		}
 
 		// Skip the dict element
-		cursor++;
+		bcur_next(&bcursor, 1);
 
-		while(cursor->type != BNT_END) {
-			switch(skip_to_key((const struct benc_node**)&cursor, stream+len, (const enum benc_nodetype[]){BNT_STRING, BNT_STRING}, (const char*[]){"nodes", "id"}, (const size_t[]){5, 2}, 2)) {
+		while(bcursor.readhead->type != BNT_END) {
+			switch(bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING, BNT_STRING}, (const char*[]){"nodes", "id"}, (const size_t[]){5, 2}, 2)) {
 				case 0:
 					// Skip the key
-					cursor++;
+					bcur_next(&bcursor, 1);
 
-					if(cursor->type != BNT_STRING) {
+					if(bcursor.readhead->type != BNT_STRING) {
 						err("Wrong value type for response");
 						exit(EXIT_FAILURE);
 					}
 
-					if((cursor->size % 26) != 0) {
+					if((bcursor.readhead->size % 26) != 0) {
 						err("get_nodes call returned an incorrect nodes array");
 						exit(EXIT_FAILURE);
 					}
 
-					nodes_len = MIN(cursor->size/26, 8);
-					dbg("We have %d (%d/26) nodes", nodes_len, cursor->size);
+					nodes_len = MIN(bcursor.readhead->size/26, 8);
+					dbg("We have %d (%d/26) nodes", nodes_len, bcursor.readhead->size);
 					for(int i = 0; i < nodes_len; i++) {
-						memcpy(nodes+i, cursor->loc+(26*i), 20);
-						memcpy(ips+i, cursor->loc+(26*i)+20, 4);
-						memcpy(ports+i, cursor->loc+(26*i)+24, 2);
+						memcpy(nodes+i, bcursor.readhead->loc+(26*i), 20);
+						memcpy(ips+i, bcursor.readhead->loc+(26*i)+20, 4);
+						memcpy(ports+i, bcursor.readhead->loc+(26*i)+24, 2);
 					}
 
 					// Skip the value
-					cursor++;
+					bcur_next(&bcursor, 1);
 					break;
 				case 1:
 					// Skip the key
-					cursor++;
+					bcur_next(&bcursor, 1);
 
-					if(cursor->type != BNT_STRING) {
+					if(bcursor.readhead->type != BNT_STRING) {
 						err("Wrong value type for response");
 						exit(EXIT_FAILURE);
 					}
 
-					if(cursor->size != 20) {
+					if(bcursor.readhead->size != 20) {
 						err("remote node id was not 20 bytes long");
 						exit(EXIT_FAILURE);
 					}
 
-					memcpy(&id, cursor->loc, 20);
+					memcpy(&id, bcursor.readhead->loc, 20);
 
 					// Skip the value
-					cursor++;
+					bcur_next(&bcursor, 1);
 					break;
 			}
-			assert(cursor < stream+len);
 		}
 	}
 
@@ -329,53 +347,128 @@ int main(int argc, char** argv) {
 
 		printf("Received packet from %s:%d\n", inet_ntoa(remote.sin_addr), ntohs(remote.sin_port));
 		
+		struct bcursor bcursor;
 		struct benc_node stream[256];
-		const char* cursor = buff;
-		int depth = 0;
-		int len = benc_decode(&cursor, buff+recv_len, &depth, stream, 256);
-		benc_print(stream, len, &depth);
+		bcur_open(&bcursor, buff, buff+recv_len, stream, 256);
+		benc_print(bcursor.readhead, bcursor.end - bcursor.readhead);
 
-		struct benc_node* stream_cursor = stream;
-		if(stream_cursor->type != BNT_DICT) {
+		if(bcursor.readhead->type != BNT_DICT) {
 			fatal("First value is not a dict");
 		}
-		stream_cursor++;
+		bcur_next(&bcursor, 1);
 
-		if(skip_to_key((const struct benc_node**)&stream_cursor, stream+len, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"t"}, (const size_t[]){1}, 1) == -1) {
-			fatal("No t key in packet");
-		}
-		stream_cursor++;
+		bool discard = false;
+		bool response;
+		bool transaction_set = false;
+		char transaction[64];
+		size_t transaction_len;
+		bool query_set = false;
+		char query[64];
+		size_t query_len;
+		while(bcursor.readhead->type != BNT_END) {
+			switch(bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING, BNT_STRING, BNT_STRING}, (const char*[]){"y", "t", "e"}, (const size_t[]){1, 1, 1}, 3)) {
+				case 0:
+					// Skip the key
+					bcur_next(&bcursor, 1);
+					response = *bcursor.readhead->loc=='r';
+					// Skip the value
+					bcur_next(&bcursor, 1);
+					break;
+				case 1: {
+					// Skip the key
+					bcur_next(&bcursor, 1);
+					if(bcursor.readhead->size > 64-1)
+						fatal("Transaction string too long");
 
-		uint32_t transaction;
-		{
-			// Temporary null terminate the string to parse the number without a copy
-			char char_buffer = stream_cursor->loc[stream_cursor->size];
-			((char*)stream_cursor->loc)[stream_cursor->size] = '\0';
-			char* end;
-			transaction = strtol(stream_cursor->loc, &end, 10);
-			((char*)stream_cursor->loc)[stream_cursor->size] = char_buffer;
+					transaction_set = true;
+					transaction_len = bcursor.readhead->size;
+					memcpy(transaction, bcursor.readhead->loc, transaction_len);
+					transaction[transaction_len] = '\0';
 
-			if(end != stream_cursor->loc+stream_cursor->size) {
-				dbg("DISCARD: Transaction id is not a number %.*s", stream_cursor->size, stream->loc);
-				continue;
+					// Skip the value
+					bcur_next(&bcursor, 1);
+					break;
+				}
+				case 3: {
+					bcur_next(&bcursor, 1);
+					query_set = true;
+					query_len = bcursor.readhead->size;
+					memcpy(query, bcursor.readhead->loc, query_len);
+					query[query_len] = '\0';
+					bcur_next(&bcursor, 1);
+				}
 			}
 		}
 
-		uint16_t reqId;
-		if(!find_req(transaction, &reqId)) {
-			dbg("DISCARD: unknown transaction id %d", transaction);
+		if(discard)
 			continue;
+
+		if(response) {
+			uint32_t transaction_number;
+
+			if(!transaction_set)
+				fatal("No transaction in response");
+
+			// Temporary null terminate the string to parse the number without a copy
+			char* end;
+			transaction_number = strtol(transaction, &end, 10);
+
+			if(end != transaction+transaction_len) {
+				fatal("DISCARD: Transaction id is not a number %.*s", transaction_len, transaction);
+			}
+
+			uint16_t reqId;
+			if(!find_req(transaction_number, &reqId)) {
+				dbg("DISCARD: unknown transaction id %d", transaction);
+				continue;
+			}
+			dbg("Transaction id matches request %d", reqId);
+
+			if(sockaddr_cmp(&requestdata[reqId].addr, (struct sockaddr*)&remote) != 0) {
+				fatal("Unexpected IP for valid transaction");
+			}
+
+			requestdata[reqId].fun(&self, buff, recv_len, sfd, &remote, remote_len);
+
+			reqalloc[reqId] = false;
+		} else { // Must be a query
+			if(!query_set)
+				fatal("No query function in query request");
+			if(!transaction_set)
+				fatal("No transaction in request");
+
+			assert(strlen(query) == query_len);
+
+			char response[1024];
+			char* end = response+sizeof(response)-1;
+			char* cursor = response;
+
+			int rc = snprintf(cursor, end-cursor , "d1:t%ld:", transaction_len);
+			if(rc < 0)
+				return EPERM;
+			cursor += rc;
+			memcpy(cursor, transaction, transaction_len);
+			cursor += transaction_len;
+			rc = snprintf(cursor, end-cursor, "1:y1:r1:r");
+			if(rc < 0)
+				return EPERM;
+			cursor += rc;
+
+			rc = handle_request(&self, query, buff, recv_len, &cursor, end-cursor-1);
+			if(rc != 0) fatal("Error handling request");
+
+			rc = snprintf(cursor, end-cursor, "e");
+			if(rc < 0)
+				return EPERM;
+			cursor += rc;
+
+			//now reply the client with the same data
+			rc = sendto(sfd, buff, cursor-response, 0, (const struct sockaddr*)&remote, remote_len);
+			if (rc == -1) {
+				return EPERM; // Operation not permitted is used as the default "generic" error
+			}
+
 		}
-		dbg("Transaction id matches request %d", reqId);
-
-		if(sockaddr_cmp(&requestdata[reqId].addr, (struct sockaddr*)&remote) != 0) {
-			err("Unexpected IP for valid transaction");
-			exit(EXIT_FAILURE);
-		}
-
-		requestdata[reqId].fun(&self, buff, recv_len, sfd, &remote, remote_len);
-
-		reqalloc[reqId] = false;
 	}
 
 	close(sfd);

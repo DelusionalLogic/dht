@@ -12,7 +12,10 @@ struct addr {
 };
 
 struct nodeid {
-	uint32_t inner[5];
+	union {
+		uint32_t inner[5];
+		char inner_b[20];
+	};
 };
 
 struct entry {
