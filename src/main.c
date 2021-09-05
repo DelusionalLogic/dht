@@ -274,6 +274,12 @@ void getclient_response(struct nodeid* self, char* packet, size_t packet_len, in
 	routing_offer(&id, &entry);
 }
 
+enum commandType {
+	CT_QUERY,
+	CT_RESPONSE,
+	CT_ERROR,
+};
+
 int main(int argc, char** argv) {
 	for(int i = 0; i < MAX_DISC; i++) {
 		// 192.0.2.0
@@ -358,7 +364,7 @@ int main(int argc, char** argv) {
 		bcur_next(&bcursor, 1);
 
 		bool discard = false;
-		bool response;
+		enum commandType type;
 		bool transaction_set = false;
 		char transaction[64];
 		size_t transaction_len;
@@ -366,11 +372,19 @@ int main(int argc, char** argv) {
 		char query[64];
 		size_t query_len;
 		while(bcursor.readhead->type != BNT_END) {
-			switch(bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING, BNT_STRING, BNT_STRING}, (const char*[]){"y", "t", "e"}, (const size_t[]){1, 1, 1}, 3)) {
+			switch(bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING, BNT_STRING, BNT_STRING}, (const char*[]){"y", "t", "q"}, (const size_t[]){1, 1, 1}, 3)) {
 				case 0:
 					// Skip the key
 					bcur_next(&bcursor, 1);
-					response = *bcursor.readhead->loc=='r';
+					if(*bcursor.readhead->loc == 'r') {
+						type = CT_RESPONSE;
+					} else if(*bcursor.readhead->loc == 'q') {
+						type = CT_QUERY;
+					} else if(*bcursor.readhead->loc == 'e') {
+						type = CT_ERROR;
+					} else {
+						fatal("Unknown command type %c", *bcursor.readhead->loc);
+					}
 					// Skip the value
 					bcur_next(&bcursor, 1);
 					break;
@@ -389,7 +403,7 @@ int main(int argc, char** argv) {
 					bcur_next(&bcursor, 1);
 					break;
 				}
-				case 3: {
+				case 2: {
 					bcur_next(&bcursor, 1);
 					query_set = true;
 					query_len = bcursor.readhead->size;
@@ -403,7 +417,7 @@ int main(int argc, char** argv) {
 		if(discard)
 			continue;
 
-		if(response) {
+		if(type == CT_RESPONSE) {
 			uint32_t transaction_number;
 
 			if(!transaction_set)
@@ -431,7 +445,7 @@ int main(int argc, char** argv) {
 			requestdata[reqId].fun(&self, buff, recv_len, sfd, &remote, remote_len);
 
 			reqalloc[reqId] = false;
-		} else { // Must be a query
+		} else if(type == CT_QUERY) { // Must be a query
 			if(!query_set)
 				fatal("No query function in query request");
 			if(!transaction_set)

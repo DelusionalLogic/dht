@@ -50,7 +50,7 @@ void indent(int depth) {
 }
 
 void benc_print(const struct benc_node* stream, size_t stream_len) {
-	int depth;
+	int depth = 0;
 	const struct benc_node* cursor = stream;
 	for(; cursor < stream + stream_len; cursor++) {
 		switch(cursor->type) {
