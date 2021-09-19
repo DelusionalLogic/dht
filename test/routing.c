@@ -6,7 +6,7 @@
 struct nodeid self;
 
 void setUp() {
-	self = (struct nodeid){{ 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000 }};
+	self = (struct nodeid){.inner={ 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000 }};
 	routing_init(&self);
 }
 
@@ -141,4 +141,35 @@ void test_not_interested_when_bucket_is_full() {
 	}
 
 	TEST_ASSERT_FALSE_MESSAGE(routing_interested(&new), "Still interested when bucket was full");
+}
+
+void test_lowest_ts_is_oldest() {
+	routing_flush();
+
+	// The address we are going to store
+	struct addr addr = (struct addr){.ip = IP(128,0,0,1), .port = 0};
+
+	struct nodeid new = self;
+	// Flip the top bit of the id to go into the low resolution bucket
+	new.inner_b[0] ^= 0x80;
+
+	// Fill up the bucket with entries
+	for(uint8_t i = 0; i < 2; i++) {
+		struct entry* entry;
+		TEST_ASSERT_TRUE_MESSAGE(routing_offer(&new, &entry), "Did not accept new entry");
+
+		// Set the entries
+		entry->id = new;
+		entry->addr = addr;
+		// Invert the timestamps to make the last one have lowest timestamp
+		entry->last = 2-i;
+
+		new.inner_b[19] += 1;
+	}
+
+	struct entry* dest = NULL;
+	routing_oldest(&dest);
+
+	TEST_ASSERT_NOT_NULL(dest);
+	TEST_ASSERT_EQUAL(1, dest->id.inner_b[19]);
 }

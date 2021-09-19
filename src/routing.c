@@ -1,5 +1,7 @@
 #include "routing.h"
 
+#include "log.h"
+
 #include <assert.h>
 #include <limits.h>
 #include <string.h>
@@ -41,6 +43,7 @@ struct entry table[ROUTINGSIZE];
 
 void routing_init(struct nodeid* myid) {
 	myID = *myid;
+	routing_flush();
 }
 
 void routing_flush() {
@@ -48,7 +51,7 @@ void routing_flush() {
 }
 
 // Calculate the common bit prefix between two node ids.
-uint8_t prefix(struct nodeid* a, struct nodeid* b) {
+static uint8_t prefix(struct nodeid* a, struct nodeid* b) {
 	uint8_t c = 0;
 	for(uint8_t i = 0; i < 5; i++) {
 		uint32_t word = a->inner[i] ^ b->inner[i];
@@ -64,13 +67,13 @@ uint8_t prefix(struct nodeid* a, struct nodeid* b) {
 	return c;
 }
 
-int8_t scan(uint16_t baseIndex, struct nodeid* id) {
+static int8_t scan(uint16_t baseIndex, struct nodeid* id) {
 	assert(baseIndex < ROUTINGSIZE - BUCKETSIZE);
-	int8_t index = -1;
+	int8_t index = -2;
 
 	for(size_t i = baseIndex; i < baseIndex + BUCKETSIZE; i++) {
 		if(!table[i].set) {
-			index = index == -1 ? i - baseIndex : index;
+			index = index == -2 ? i - baseIndex : index;
 			continue;
 		}
 
@@ -82,6 +85,28 @@ int8_t scan(uint16_t baseIndex, struct nodeid* id) {
 	return index;
 }
 
+static uint16_t base_bucket(struct nodeid* id) {
+	uint16_t bucketIndex = prefix(&myID, id);
+	assert(bucketIndex != IDBITS);
+
+	// If they are sufficiently similar they end up in the final bucket. Clamp the index to ensure.
+	bucketIndex = bucketIndex > (IDBITS - BUCKETBITS) ? (IDBITS - BUCKETBITS) : bucketIndex;
+	assert(bucketIndex <= IDBITS - BUCKETBITS);
+
+	return bucketIndex * BUCKETSIZE;
+}
+
+struct entry* routing_get(struct nodeid* id) {
+	uint16_t baseIndex = base_bucket(id);
+	for(size_t i = baseIndex; i < baseIndex + BUCKETSIZE; i++) {
+		if(memcmp(&table[i].id, id, sizeof(struct nodeid)) == 0) {
+			return &table[i];
+		}
+	}
+
+	return NULL;
+}
+
 bool routing_interested(struct nodeid* id) {
 	uint16_t bucketIndex = prefix(&myID, id);
 	// The nodeid is the same as our own
@@ -89,14 +114,10 @@ bool routing_interested(struct nodeid* id) {
 		return false;
 	}
 
-	// If they are sufficiently similar they end up in the final bucket. Clamp the index to ensure.
-	bucketIndex = bucketIndex > (IDBITS - BUCKETBITS) ? (IDBITS - BUCKETBITS) : bucketIndex;
-	assert(bucketIndex <= IDBITS - BUCKETBITS);
-
-	uint16_t baseIndex = bucketIndex * BUCKETSIZE;
+	uint16_t baseIndex = base_bucket(id);
 	int8_t inBucketIndex = scan(baseIndex, id);
 
-	if(inBucketIndex == -1) {
+	if(inBucketIndex < 0) {
 		// The bucket either already contains the node, or it has no more space
 		return false;
 	}
@@ -112,11 +133,7 @@ bool routing_offer(struct nodeid* id, struct entry **dest) {
 		return false;
 	}
 
-	// If they are sufficiently similar they end up in the final bucket. Clamp the index to ensure.
-	bucketIndex = bucketIndex > (IDBITS - BUCKETBITS) ? (IDBITS - BUCKETBITS) : bucketIndex;
-	assert(bucketIndex <= IDBITS - BUCKETBITS);
-
-	uint16_t baseIndex = bucketIndex * BUCKETSIZE;
+	uint16_t baseIndex = base_bucket(id);
 	int8_t inBucketIndex = scan(baseIndex, id);
 
 	if(inBucketIndex == -1) {
@@ -181,3 +198,20 @@ size_t routing_closest(struct nodeid* needle, size_t n, struct entry** res) {
 	return read;
 }
 
+void routing_oldest(struct entry** dest) {
+	*dest = NULL;
+
+	for(struct entry* entry = table; entry < table+ROUTINGSIZE; entry++){
+		if(!entry->set)
+			continue;
+
+		if(*dest == NULL) {
+			*dest = entry;
+			continue;
+		}
+
+		if(difftime((*dest)->last, entry->last) > 0.0) {
+			*dest = entry;
+		}
+	}
+}
