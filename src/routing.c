@@ -136,7 +136,7 @@ bool routing_offer(struct nodeid* id, struct entry **dest) {
 	uint16_t baseIndex = base_bucket(id);
 	int8_t inBucketIndex = scan(baseIndex, id);
 
-	if(inBucketIndex == -1) {
+	if(inBucketIndex < 0) {
 		// The bucket either already contains the node, or it has no more space
 		return false;
 	}
@@ -210,7 +210,7 @@ void routing_oldest(struct entry** dest) {
 			continue;
 		}
 
-		if(difftime((*dest)->last, entry->last) > 0.0) {
+		if(difftime((*dest)->expire, entry->expire) > 0.0) {
 			*dest = entry;
 		}
 	}

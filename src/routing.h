@@ -21,7 +21,7 @@ struct nodeid {
 struct entry {
 	bool set;
 	struct nodeid id;
-	time_t last;
+	time_t expire;
 	struct addr addr;
 };
 
