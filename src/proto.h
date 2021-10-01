@@ -9,42 +9,41 @@
 #define MAX_DISC 32
 #define MAX_INFLIGHT 32
 
-#define UNCERTAIN_TIME 900
+#define PROTO_UNCTM 900
 #define PROTO_TMOUT 60
 
-struct discovery {
-	struct in_addr addr;
-	uint16_t port;
-	struct nodeid expected_id;
+struct ping {
+	struct nodeid remote_id;
+	int attempt;
+	bool is_new;
 };
 
 union message_cont {
-	struct discovery discovery;
+	struct ping ping;
 };
 
 struct dht;
 struct msgbuff;
 
-#define PROCESS_REPONSE(NAME) int NAME(struct dht* dht, time_t now, union message_cont* cont, char* packet, size_t packet_len, int socket, struct sockaddr* remote, socklen_t remote_len, struct msgbuff* msgbuff)
+#define PROCESS_REPONSE(NAME) int (NAME)(struct dht* dht, time_t now, union message_cont* cont, char* packet, size_t packet_len, int socket, struct sockaddr* remote, socklen_t remote_len, struct msgbuff* msgbuff)
 typedef PROCESS_REPONSE(cont);
 
-#define PROCESS_TIMEOUT(NAME) int NAME(struct dht* dht, struct nodeid* self, time_t now, union message_cont* cont, struct msgbuff* msgbuff)
+#define PROCESS_TIMEOUT(NAME) int (NAME)(struct dht* dht, struct nodeid* self, time_t now, union message_cont* cont, struct msgbuff* msgbuff)
 typedef PROCESS_TIMEOUT(tmout);
 
 struct dht {
 	struct nodeid self;
 	int sfd;
 
-	struct in_addr addrs[MAX_DISC];
-	struct discovery pending_discover[MAX_DISC];
 	bool pause;
 
 	bool reqalloc[MAX_INFLIGHT];
 	struct {
 		struct sockaddr_storage addr;
-		cont fun;
+		socklen_t addr_len;
+		cont* fun;
 		time_t timeout;
-		tmout timeout_fun;
+		tmout* timeout_fun;
 		union message_cont cont;
 	} requestdata[MAX_INFLIGHT];
 };

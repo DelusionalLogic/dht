@@ -97,6 +97,7 @@ struct msgbuff {
 #define PROTO_ENOREQ 2
 
 PROCESS_REPONSE(getclient_response);
+PROCESS_TIMEOUT(getclient_timeout);
 
 uint8_t rand_byte() {
 	int limit = RAND_MAX - (RAND_MAX % UINT8_MAX);
@@ -106,54 +107,110 @@ uint8_t rand_byte() {
 	return val;
 }
 
-int send_ping(struct dht* dht, struct nodeid* self, time_t now, const int sfd, const struct sockaddr* dest_addr, socklen_t dest_len, struct msgbuff* msgbuff) {
+int create_ping(char* buff, size_t* buff_len, struct nodeid* self, struct nodeid* target, uint16_t tid) {
+	char* buff_end = buff + *buff_len;
+
+	int rc = snprintf(buff, buff_end - buff, "d1:ad2:id20:");
+	if(rc < 0)
+		fatal("Failed to write packet");
+	buff += rc;
+	memcpy(buff, self, sizeof(struct nodeid));
+	buff += sizeof(struct nodeid);
+	rc = snprintf(buff, buff_end - buff, "6:target20:");
+	if(rc < 0)
+		fatal("Failed to write packet");
+	buff += rc;
+	memcpy(buff, &target, sizeof(struct nodeid));
+	buff += sizeof(struct nodeid);
+	rc = snprintf(buff, buff_end - buff, "e1:q9:find_node1:t%d:%d1:y1:qe", (int)(log10(tid+1)+1), tid);
+	if(rc < 0)
+		fatal("Failed to write packet");
+	buff += rc;
+
+	*buff_len = buff - (buff_end - *buff_len);
+	return 0;
+}
+
+int send_ping(struct dht* dht, struct nodeid* expected, time_t now, bool node_is_new, const struct sockaddr* dest_addr, socklen_t dest_len, struct msgbuff* msgbuff) {
+
+	if(*msgbuff->messages >= msgbuff->messages_end)
+		return PROTO_ENOREQ;
+	struct message* message = *msgbuff->messages;
+
+	uint16_t reqId;
+	if(!alloc_req(dht, &reqId)) {
+		return PROTO_ENOREQ;
+	}
+	dbg("Allocating request %d", reqId);
+
+	memcpy(&message->dest, dest_addr, dest_len);
+	message->dest_len = dest_len;
+
+	struct ping* data = &dht->requestdata[reqId].cont.ping;
+	if(!node_is_new)
+		data->remote_id = *expected;
+	data->is_new = node_is_new;
+	data->attempt = 0;
+
+	dht->requestdata[reqId].fun = &getclient_response;
+	dht->requestdata[reqId].timeout = now + PROTO_TMOUT;
+	dht->requestdata[reqId].timeout_fun = getclient_timeout;
+	memcpy(&dht->requestdata[reqId].addr, dest_addr, dest_len);
+	dht->requestdata[reqId].addr_len = dest_len;
+
 	// Generate a random target
 	struct nodeid target;
 	for(uint8_t *target_byte = (uint8_t*)&target; target_byte < ((uint8_t*)&target)+sizeof(target); target_byte++) {
 		*target_byte = rand_byte();
 	}
 
-	uint16_t reqId;
-	if(!alloc_req(dht, &reqId)) {
-		return PROTO_ENOREQ;
+	message->payload_len = 128;
+	int rc = create_ping(message->payload, &message->payload_len, &dht->self, &target, reqId);
+	if(rc != 0) {
+		return rc;
 	}
+	(*msgbuff->messages)++;
+
+	return 0;
+}
+
+PROCESS_TIMEOUT(getclient_timeout) {
+	// @HACK: This really sucks. maybe we should just pass in the request id
+	size_t reqId = (typeof(dht->requestdata[0])*)((void*)cont - offsetof(typeof(dht->requestdata[0]), cont)) - dht->requestdata;
+
+	if(cont->ping.attempt >= 2) {
+		if(cont->ping.is_new)
+			return 0;
+
+		routing_remove(&cont->ping.remote_id);
+		return 0;
+	}
+
+	dbg("Retrying request %d", reqId);
 
 	if(*msgbuff->messages >= msgbuff->messages_end)
 		return PROTO_ENOREQ;
 	struct message* message = *msgbuff->messages;
 
-	memcpy(&message->dest, dest_addr, dest_len);
-	message->dest_len = dest_len;
-	char* buff = message->payload;
-	size_t i = 0;
+	memcpy(&message->dest, &dht->requestdata[reqId].addr, dht->requestdata[reqId].addr_len);
+	message->dest_len = dht->requestdata[reqId].addr_len;
 
-	dbg("Allocating request %d", reqId);
-	dht->requestdata[reqId].fun = &getclient_response;
-	dht->requestdata[reqId].timeout = now + PROTO_TMOUT;
-	dht->requestdata[reqId].timeout_fun = NULL;
-	memcpy(&dht->requestdata[reqId].addr, dest_addr, dest_len);
+	// Generate a random target
+	struct nodeid target;
+	for(uint8_t *target_byte = (uint8_t*)&target; target_byte < ((uint8_t*)&target)+sizeof(target); target_byte++) {
+		*target_byte = rand_byte();
+	}
 
-	int rc = snprintf(buff+i, 128-i, "d1:ad2:id20:");
-	if(rc < 0)
-		fatal("Failed to write packet");
-	i += rc;
-	memcpy(buff+i, self, sizeof(struct nodeid));
-	i += sizeof(struct nodeid);
-	rc = snprintf(buff+i, 128-i, "6:target20:");
-	if(rc < 0)
-		fatal("Failed to write packet");
-	i += rc;
-	memcpy(buff+i, &target, sizeof(struct nodeid));
-	i += sizeof(struct nodeid);
-	rc = snprintf(buff+i, 128-i, "e1:q9:find_node1:t%d:%d1:y1:qe", (int)(log10(reqId+1)+1), reqId);
-	if(rc < 0)
-		fatal("Failed to write packet");
-	i += rc;
-
-	message->payload_len = i;
+	message->payload_len = 128;
+	int rc = create_ping(message->payload, &message->payload_len, &dht->self, &target, reqId);
+	if(rc != 0) {
+		fatal("Can't create ping");
+	}
 	(*msgbuff->messages)++;
 
-	return 0;
+	dht->requestdata[reqId].timeout = now + PROTO_TMOUT;
+	cont->ping.attempt++;
+	return PROTO_EDISC;
 }
 
 PROCESS_REPONSE(getclient_response) {
@@ -246,7 +303,24 @@ PROCESS_REPONSE(getclient_response) {
 		}
 	}
 
-	// Print the candidates
+	// The response was good, so save the node
+	if(cont->ping.is_new) {
+		struct entry* entry;
+		if(!routing_offer(&id, &entry)) {
+			dbg("We are no longer interested");
+			return 0;
+		}
+
+		struct sockaddr_in* ipv4 = (struct sockaddr_in*)remote;
+		entry->addr.ip = ipv4->sin_addr.s_addr;
+		entry->addr.port = ipv4->sin_port;
+		entry->expire = now + PROTO_UNCTM;
+	} else {
+		fatal("Ping has not been implemented");
+		// Touch the routing entry
+	}
+
+	// Fan out the search if the results were interesting
 	for(uint8_t i = 0; i < nodes_len; i++) {
 		dbgl_id(&nodes[i]);
 		printf("Candidate %s:%d\n", inet_ntoa(ips[i]), ntohs(ports[i]));
@@ -258,25 +332,16 @@ PROCESS_REPONSE(getclient_response) {
 		};
 
 		if(routing_interested(&nodes[i])) {
-			int rc = send_ping(dht, &dht->self, now, socket, (struct sockaddr*)&dest, sizeof(struct sockaddr_in), msgbuff);
-			if(rc != 0) {
-				err("send_ping failed %d", rc);
+			int rc = send_ping(dht, &nodes[i], now, true, (struct sockaddr*)&dest, sizeof(struct sockaddr_in), msgbuff);
+			if(rc == PROTO_ENOREQ) {
+				return rc;
+			} else if(rc != 0) {
+				fatal("send_ping failed %d", rc);
 			}
 		} else {
 			dbg("Not interested in node");
 		}
 	}
-
-	struct entry* entry;
-	if(!routing_offer(&id, &entry)) {
-		dbg("We are no longer interested");
-		return 0;
-	}
-
-	struct sockaddr_in* ipv4 = (struct sockaddr_in*)remote;
-	entry->addr.ip = ipv4->sin_addr.s_addr;
-	entry->addr.port = ipv4->sin_port;
-	entry->expire = now + UNCERTAIN_TIME;
 
 	return 0;
 }
@@ -339,7 +404,7 @@ void proto_begin(struct dht* dht, time_t now, struct message** output, const str
 		/* rc = snprintf(buff+i, 128-i, "e1:q4:ping1:t2:ab1:y1:qe"); */
 		/* i += rc; */
 
-		send_ping(dht, &dht->self, now, dht->sfd, cur->ai_addr, cur->ai_addrlen, &msgbuff);
+		send_ping(dht, NULL, now, true, cur->ai_addr, cur->ai_addrlen, &msgbuff);
 	}
 
 	freeaddrinfo(res);
@@ -359,18 +424,21 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 		for(int i = 0; i < MAX_INFLIGHT; i++) {
 			if(!dht->reqalloc[i])
 				continue;
+			if(dht->requestdata[i].timeout == 0)
+				continue;
 			if(difftime(now, dht->requestdata[i].timeout) < 0)
 				continue;
 
-			if(dht->requestdata[i].timeout_fun != NULL)
-				dht->requestdata[i].timeout_fun(dht, &dht->self, now, &msgbuff);
+			int rc = dht->requestdata[i].timeout_fun(dht, &dht->self, now, &dht->requestdata[i].cont, &msgbuff);
 
-			dht->requestdata[i].fun = NULL;
-			dht->requestdata[i].timeout_fun = NULL;
-			dht->requestdata[i].timeout = 0;
-			dht->reqalloc[i] = false;
+			if(rc != PROTO_EDISC) {
+				dht->requestdata[i].fun = NULL;
+				dht->requestdata[i].timeout_fun = NULL;
+				dht->requestdata[i].timeout = 0;
+				dht->reqalloc[i] = false;
 
-			dht->pause = false;
+				dht->pause = false;
+			}
 		}
 
 		struct entry* oldest = NULL;
@@ -384,7 +452,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			dest.sin_family = AF_INET;
 			dest.sin_addr.s_addr = oldest->addr.ip;
 			dest.sin_port = oldest->addr.port;
-			int rc = send_ping(dht, &dht->self, now, dht->sfd, (const struct sockaddr*)&dest, sizeof(dest), &msgbuff);
+			int rc = send_ping(dht, &oldest->id, now, false, (const struct sockaddr*)&dest, sizeof(dest), &msgbuff);
 			if(rc == PROTO_ENOREQ) {
 				dht->pause = true;
 				return 0;
@@ -496,9 +564,11 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			return 0;
 		}
 
-		int rc = dht->requestdata[reqId].fun(dht, now, buff, recv_len, dht->sfd, (struct sockaddr*)remote, remote_len, &msgbuff);
-		if(rc == PROTO_EDISC) {
+		dht->pause = false;
+		int rc = dht->requestdata[reqId].fun(dht, now, &dht->requestdata[reqId].cont, buff, recv_len, dht->sfd, (struct sockaddr*)remote, remote_len, &msgbuff);
+		if(rc == PROTO_ENOREQ) {
 			dht->pause = true;
+		} else if(rc == PROTO_EDISC) {
 			return 0;
 		}
 
@@ -506,7 +576,6 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 		dht->requestdata[reqId].timeout_fun = NULL;
 		dht->requestdata[reqId].timeout = 0;
 		dht->reqalloc[reqId] = false;
-		dht->pause = false;
 	} else if(type == CT_QUERY) { // Must be a query
 		if(!query_set)
 			fatal("No query function in query request");

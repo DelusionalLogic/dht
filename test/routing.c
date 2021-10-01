@@ -36,7 +36,7 @@ void test_can_find_added() {
 
 	// Set the entries
 	entry->addr = addr;
-	entry->last = time(NULL);
+	entry->expire = time(NULL);
 
 	// Ask for 3 nodes
 	struct entry *out[3] = {0};
@@ -65,7 +65,7 @@ void test_discard_offer_when_bucket_full() {
 
 		// Set the entries
 		entry->addr = addr;
-		entry->last = time(NULL);
+		entry->expire = time(NULL);
 
 		new.inner[4] += 1;
 	}
@@ -86,7 +86,7 @@ void test_discard_offer_when_nodeid_added_twice() {
 	struct entry* entry;
 	TEST_ASSERT_TRUE(routing_offer(&new, &entry));
 	entry->addr = addr;
-	entry->last = time(NULL);
+	entry->expire = time(NULL);
 
 	bool accept = routing_offer(&new, &entry);
 	TEST_ASSERT_FALSE_MESSAGE(accept, "Accepted entry when bucket was full");
@@ -112,7 +112,7 @@ void test_not_interested_when_nodeid_in_table() {
 	struct entry* entry;
 	TEST_ASSERT_TRUE(routing_offer(&new, &entry));
 	entry->addr = (struct addr){.ip = IP(128,0,0,1), .port = 0};
-	entry->last = time(NULL);
+	entry->expire = time(NULL);
 
 	bool interest = routing_interested(&new);
 	TEST_ASSERT_FALSE_MESSAGE(interest, "Was interested in node");
@@ -135,7 +135,7 @@ void test_not_interested_when_bucket_is_full() {
 
 		// Set the entries
 		entry->addr = addr;
-		entry->last = time(NULL);
+		entry->expire = time(NULL);
 
 		new.inner[4] += 1;
 	}
@@ -162,7 +162,7 @@ void test_lowest_ts_is_oldest() {
 		entry->id = new;
 		entry->addr = addr;
 		// Invert the timestamps to make the last one have lowest timestamp
-		entry->last = 2-i;
+		entry->expire = 2-i;
 
 		new.inner_b[19] += 1;
 	}
@@ -172,4 +172,50 @@ void test_lowest_ts_is_oldest() {
 
 	TEST_ASSERT_NOT_NULL(dest);
 	TEST_ASSERT_EQUAL(1, dest->id.inner_b[19]);
+}
+
+void test_get_after_offer() {
+	routing_flush();
+
+	// The address we are going to store
+	struct addr addr = (struct addr){.ip = IP(128,0,0,1), .port = 0};
+
+	// Make a nodeid that is one bit different
+	struct nodeid new = self;
+
+	new.inner[4] += 1;
+	struct entry* entry;
+	TEST_ASSERT_TRUE_MESSAGE(routing_offer(&new, &entry), "Did not accept new entry");
+
+	// Set the entry
+	entry->addr = addr;
+	entry->expire = 10;
+
+	struct entry* e = routing_get(&new);
+
+	TEST_ASSERT_NOT_NULL(e);
+	TEST_ASSERT_EQUAL_MEMORY(&addr, &e->addr, sizeof(struct addr));
+}
+
+void test_get_after_offer_and_remove() {
+	routing_flush();
+
+	// The address we are going to store
+	struct addr addr = (struct addr){.ip = IP(128,0,0,1), .port = 0};
+
+	// Make a nodeid that is one bit different
+	struct nodeid new = self;
+
+	new.inner[4] += 1;
+	struct entry* entry;
+	TEST_ASSERT_TRUE_MESSAGE(routing_offer(&new, &entry), "Did not accept new entry");
+
+	// Set the entry
+	entry->addr = addr;
+	entry->expire = 10;
+
+	routing_remove(&new);
+	struct entry* e = routing_get(&new);
+
+	TEST_ASSERT_NULL(e);
 }

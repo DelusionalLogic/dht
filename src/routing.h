@@ -33,3 +33,4 @@ void routing_oldest(struct entry** dest);
 size_t routing_closest(struct nodeid* needle, size_t n, struct entry** res);
 
 struct entry* routing_get(struct nodeid* id);
+void routing_remove(struct nodeid* self);

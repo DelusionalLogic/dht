@@ -99,12 +99,20 @@ static uint16_t base_bucket(struct nodeid* id) {
 struct entry* routing_get(struct nodeid* id) {
 	uint16_t baseIndex = base_bucket(id);
 	for(size_t i = baseIndex; i < baseIndex + BUCKETSIZE; i++) {
+		if(!table[i].set) continue;
+
 		if(memcmp(&table[i].id, id, sizeof(struct nodeid)) == 0) {
 			return &table[i];
 		}
 	}
 
 	return NULL;
+}
+
+void routing_remove(struct nodeid* id) {
+	struct entry* entry = routing_get(id);
+
+	entry->set = false;
 }
 
 bool routing_interested(struct nodeid* id) {

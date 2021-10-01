@@ -35,12 +35,27 @@ int main(int argc, char** argv) {
 
 		bool timedout = false;
 		if(!dht.pause){
+			time_t next = 0;
+
 			struct entry* oldest;
 			routing_oldest(&oldest);
-			if(oldest != NULL) {
-				dbg("Set timeout to %ld", oldest->expire - time(NULL));
+			if(oldest != NULL)
+				next = oldest->expire;
+
+			for(int i = 0; i < MAX_INFLIGHT; i++) {
+				if(!dht.reqalloc[i])
+					continue;
+
+				time_t timeout = dht.requestdata[i].timeout;
+				if(next == 0 || (timeout != 0 && difftime(timeout, next) < 0))
+					next = timeout;
+			}
+
+			if(next != 0) {
+				time_t sleepfor = next - time(NULL);
+				dbg("Set timeout to %ld", sleepfor);
 				struct timeval tv = {
-					.tv_sec = oldest->expire - time(NULL),
+					.tv_sec = sleepfor,
 					.tv_usec = 0,
 				};
 				if(tv.tv_sec <= 0) {
@@ -48,7 +63,10 @@ int main(int argc, char** argv) {
 				} else {
 					setsockopt(dht.sfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 				}
+			} else {
+				fatal("We have to wait some amount of time right now");
 			}
+
 		} else {
 			printf("DHT timeout is paused");
 		}
