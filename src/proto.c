@@ -132,7 +132,6 @@ int create_ping(char* buff, size_t* buff_len, struct nodeid* self, struct nodeid
 }
 
 int send_ping(struct dht* dht, struct nodeid* expected, time_t now, bool node_is_new, const struct sockaddr* dest_addr, socklen_t dest_len, struct msgbuff* msgbuff) {
-
 	if(*msgbuff->messages >= msgbuff->messages_end)
 		return PROTO_ENOREQ;
 	struct message* message = *msgbuff->messages;
@@ -147,8 +146,9 @@ int send_ping(struct dht* dht, struct nodeid* expected, time_t now, bool node_is
 	message->dest_len = dest_len;
 
 	struct ping* data = &dht->requestdata[reqId].cont.ping;
-	if(!node_is_new)
+	if(!node_is_new) {
 		data->remote_id = *expected;
+	}
 	data->is_new = node_is_new;
 	data->attempt = 0;
 
@@ -181,6 +181,8 @@ PROCESS_TIMEOUT(getclient_timeout) {
 	if(cont->ping.attempt >= 2) {
 		if(cont->ping.is_new)
 			return 0;
+
+		dbg("Discarding node that didn't respond");
 
 		routing_remove(&cont->ping.remote_id);
 		return 0;
@@ -306,18 +308,17 @@ PROCESS_REPONSE(getclient_response) {
 	// The response was good, so save the node
 	if(cont->ping.is_new) {
 		struct entry* entry;
-		if(!routing_offer(&id, &entry)) {
+		if(routing_offer(&id, &entry)) {
+			struct sockaddr_in* ipv4 = (struct sockaddr_in*)remote;
+			entry->addr.ip = ipv4->sin_addr.s_addr;
+			entry->addr.port = ipv4->sin_port;
+			entry->expire = now + PROTO_UNCTM;
+		} else {
 			dbg("We are no longer interested");
-			return 0;
 		}
-
-		struct sockaddr_in* ipv4 = (struct sockaddr_in*)remote;
-		entry->addr.ip = ipv4->sin_addr.s_addr;
-		entry->addr.port = ipv4->sin_port;
-		entry->expire = now + PROTO_UNCTM;
 	} else {
-		fatal("Ping has not been implemented");
-		// Touch the routing entry
+		struct entry* entry = routing_get(&id);
+		entry->expire = now + PROTO_UNCTM;
 	}
 
 	// Fan out the search if the results were interesting
@@ -414,6 +415,96 @@ void proto_end(struct dht* dht) {
 	close(dht->sfd);
 }
 
+int handle_packet(struct dht* dht, time_t now, enum commandType type, char* transaction, size_t transaction_len, char* query, size_t query_len, char* packet, size_t packet_len, struct sockaddr_in* remote, socklen_t remote_len, struct msgbuff* msgbuff) {
+	if(type == CT_RESPONSE) {
+		uint32_t transaction_number;
+
+		if(transaction == NULL) {
+			err("DISCARD: No transaction in response");
+			return 0;
+		}
+
+		// Temporary null terminate the string to parse the number without a copy
+		char* end;
+		dbg("Transaction %s", transaction);
+		transaction_number = strtol(transaction, &end, 10);
+
+		if(end != transaction+transaction_len) {
+			err("DISCARD: Transaction id is not a number %.*s", (int)transaction_len, transaction);
+			return 0;
+		}
+
+		uint16_t reqId;
+		if(!find_req(dht, transaction_number, &reqId)) {
+			err("DISCARD: unknown transaction id %d", transaction_number);
+			return 0;
+		}
+		dbg("Transaction id matches request %d", reqId);
+
+		if(sockaddr_cmp((struct sockaddr*)&dht->requestdata[reqId].addr, (struct sockaddr*)remote) != 0) {
+			err("DISCARD: Unexpected IP for valid transaction");
+			return 0;
+		}
+
+		dht->pause = false;
+		int rc = dht->requestdata[reqId].fun(dht, now, &dht->requestdata[reqId].cont, packet, packet_len, dht->sfd, (struct sockaddr*)remote, remote_len, msgbuff);
+		if(rc == PROTO_ENOREQ) {
+			dht->pause = true;
+		} else if(rc == PROTO_EDISC) {
+			return 0;
+		}
+
+		dht->requestdata[reqId].fun = NULL;
+		dht->requestdata[reqId].timeout_fun = NULL;
+		dht->requestdata[reqId].timeout = 0;
+		dht->reqalloc[reqId] = false;
+	} else if(type == CT_QUERY) { // Must be a query
+		if(query == NULL)
+			fatal("No query function in query request");
+		if(transaction == NULL)
+			fatal("No transaction in request");
+
+		assert(strlen(query) == query_len);
+
+		assert(*msgbuff->messages < msgbuff->messages_end);
+		struct message* message = *msgbuff->messages;
+
+		char* end = message->payload+128;
+		char* cursor = message->payload;
+
+		int rc = snprintf(cursor, end-cursor , "d1:t%ld:", transaction_len);
+		if(rc < 0)
+			fatal("No space for response");
+		cursor += rc;
+		memcpy(cursor, transaction, transaction_len);
+		cursor += transaction_len;
+		rc = snprintf(cursor, end-cursor, "1:y1:r1:r");
+		if(rc < 0)
+			fatal("No space for response");
+		cursor += rc;
+
+		rc = handle_request(&dht->self, query, packet, packet_len, &cursor, end-cursor-1);
+		if(rc == QUERY_EUNK) {
+			dbg("DISCARD: Unknown query method");
+			return 0;
+		} else if(rc != 0) fatal("Error handling request");
+
+		rc = snprintf(cursor, end-cursor, "e");
+		if(rc < 0)
+			fatal("No space for response");
+		cursor += rc;
+		assert(cursor < end);
+
+		message->payload_len = cursor - message->payload;
+
+		memcpy(&message->dest, remote, remote_len);
+		message->dest_len = remote_len;
+		(*msgbuff->messages)++;
+	}
+
+	return 0;
+}
+
 int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* remote, socklen_t remote_len, time_t now, struct message** output, const struct message* const output_end) {
 	struct msgbuff msgbuff = {
 		output,
@@ -431,6 +522,10 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 
 			int rc = dht->requestdata[i].timeout_fun(dht, &dht->self, now, &dht->requestdata[i].cont, &msgbuff);
 
+			if(rc == PROTO_ENOREQ) {
+				dht->pause = true;
+				return 0;
+			}
 			if(rc != PROTO_EDISC) {
 				dht->requestdata[i].fun = NULL;
 				dht->requestdata[i].timeout_fun = NULL;
@@ -446,7 +541,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 		while(oldest != NULL) {
 			if(difftime(now, oldest->expire) < 0)
 				break;
-			dbg("============ Ping uncertain node");
+			dbg("Node becomes uncertain");
 
 			struct sockaddr_in dest = {0};
 			dest.sin_family = AF_INET;
@@ -461,7 +556,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 				return 0;
 			}
 
-			oldest->expire = now + 30;
+			oldest->expire = 0;
 			routing_oldest(&oldest);
 		}
 
@@ -534,90 +629,40 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 		return 0;
 	}
 
-	if(type == CT_RESPONSE) {
-		uint32_t transaction_number;
+	int rc = handle_packet(dht, now, type, transaction_set ? transaction : NULL, transaction_len, query_set ? query : NULL, query_len, buff, recv_len, remote, remote_len, &msgbuff);
+	assert(rc == 0);
 
-		if(!transaction_set) {
-			err("DISCARD: No transaction in response");
-			return 0;
+	{
+		size_t allocated = 0;
+		for(int i = 0; i < MAX_INFLIGHT; i++) {
+			if(dht->reqalloc[i]) {
+				allocated++;
+			}
 		}
 
-		// Temporary null terminate the string to parse the number without a copy
-		char* end;
-		dbg("Transaction %s", transaction);
-		transaction_number = strtol(transaction, &end, 10);
+		dbg("%d/%d requests pending", allocated, MAX_INFLIGHT);
+	}
+	{
+		int filled;
+		int total;
+#define LFACLEN 32
+		double load_factor[LFACLEN] = {0};
+		routing_status(&filled, &total, load_factor, LFACLEN);
+		dbg("%d/%d nodes in routing table", filled, total);
 
-		if(end != transaction+transaction_len) {
-			err("DISCARD: Transaction id is not a number %.*s", (int)transaction_len, transaction);
-			return 0;
+#define GRAPHY 10
+		for(int y = 0; y < GRAPHY; y++) {
+			for(int x = 0; x < LFACLEN; x++) {
+				if(load_factor[x] > (1.0/GRAPHY) * (GRAPHY-y)) {
+					printf("#");
+				} else {
+					printf(" ");
+				}
+			}
+			printf("|\n");
 		}
-
-		uint16_t reqId;
-		if(!find_req(dht, transaction_number, &reqId)) {
-			err("DISCARD: unknown transaction id %d", transaction_number);
-			return 0;
-		}
-		dbg("Transaction id matches request %d", reqId);
-
-		if(sockaddr_cmp((struct sockaddr*)&dht->requestdata[reqId].addr, (struct sockaddr*)remote) != 0) {
-			err("DISCARD: Unexpected IP for valid transaction");
-			return 0;
-		}
-
-		dht->pause = false;
-		int rc = dht->requestdata[reqId].fun(dht, now, &dht->requestdata[reqId].cont, buff, recv_len, dht->sfd, (struct sockaddr*)remote, remote_len, &msgbuff);
-		if(rc == PROTO_ENOREQ) {
-			dht->pause = true;
-		} else if(rc == PROTO_EDISC) {
-			return 0;
-		}
-
-		dht->requestdata[reqId].fun = NULL;
-		dht->requestdata[reqId].timeout_fun = NULL;
-		dht->requestdata[reqId].timeout = 0;
-		dht->reqalloc[reqId] = false;
-	} else if(type == CT_QUERY) { // Must be a query
-		if(!query_set)
-			fatal("No query function in query request");
-		if(!transaction_set)
-			fatal("No transaction in request");
-
-		assert(strlen(query) == query_len);
-
-		assert(*msgbuff.messages < msgbuff.messages_end);
-		struct message* message = *msgbuff.messages;
-
-		char* end = message->payload+128;
-		char* cursor = message->payload;
-
-		int rc = snprintf(cursor, end-cursor , "d1:t%ld:", transaction_len);
-		if(rc < 0)
-			return EPERM;
-		cursor += rc;
-		memcpy(cursor, transaction, transaction_len);
-		cursor += transaction_len;
-		rc = snprintf(cursor, end-cursor, "1:y1:r1:r");
-		if(rc < 0)
-			return EPERM;
-		cursor += rc;
-
-		rc = handle_request(&dht->self, query, buff, recv_len, &cursor, end-cursor-1);
-		if(rc == QUERY_EUNK) {
-			dbg("DISCARD: Unknown query method");
-			return 0;
-		} else if(rc != 0) fatal("Error handling request");
-
-		rc = snprintf(cursor, end-cursor, "e");
-		if(rc < 0)
-			return EPERM;
-		cursor += rc;
-		assert(cursor < end);
-
-		message->payload_len = cursor - message->payload;
-
-		memcpy(&message->dest, remote, remote_len);
-		message->dest_len = remote_len;
-		(*msgbuff.messages)++;
+#undef GRAPHY
+#undef LFACLEN
 	}
 
 	return 0;

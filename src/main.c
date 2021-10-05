@@ -17,12 +17,12 @@ void flush_messages(int sfd, struct message* cursor, const struct message* const
 }
 
 int main(int argc, char** argv) {
-	struct message outbuff[10] = {0};
+	struct message outbuff[32] = {0};
 
 	struct dht dht;
-	dht.self = (struct nodeid){.inner={0x0034048f, 0x08000020, 0x00888880, 0x02008460, 0x0ab00521}};
+	dht.self = (struct nodeid){.inner={0xebe9bbf1, 0x3cdba6b3, 0x993e0c87, 0x900d5e25}};
 	struct message* message_cursor = outbuff;
-	proto_begin(&dht, time(NULL), &message_cursor, outbuff+10);
+	proto_begin(&dht, time(NULL), &message_cursor, outbuff+32);
 	flush_messages(dht.sfd, outbuff, message_cursor);
 
 
@@ -34,42 +34,41 @@ int main(int argc, char** argv) {
 		fflush(stdout);
 
 		bool timedout = false;
+		time_t next = 0;
 		if(!dht.pause){
-			time_t next = 0;
 
 			struct entry* oldest;
 			routing_oldest(&oldest);
 			if(oldest != NULL)
 				next = oldest->expire;
 
-			for(int i = 0; i < MAX_INFLIGHT; i++) {
-				if(!dht.reqalloc[i])
-					continue;
-
-				time_t timeout = dht.requestdata[i].timeout;
-				if(next == 0 || (timeout != 0 && difftime(timeout, next) < 0))
-					next = timeout;
-			}
-
-			if(next != 0) {
-				time_t sleepfor = next - time(NULL);
-				dbg("Set timeout to %ld", sleepfor);
-				struct timeval tv = {
-					.tv_sec = sleepfor,
-					.tv_usec = 0,
-				};
-				if(tv.tv_sec <= 0) {
-					timedout = true;
-				} else {
-					setsockopt(dht.sfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-				}
-			} else {
-				fatal("We have to wait some amount of time right now");
-			}
-
 		} else {
-			printf("DHT timeout is paused");
+			dbg("DHT timeout is paused");
 		}
+
+		for(int i = 0; i < MAX_INFLIGHT; i++) {
+			if(!dht.reqalloc[i])
+				continue;
+
+			time_t timeout = dht.requestdata[i].timeout;
+			if(next == 0 || (timeout != 0 && difftime(timeout, next) < 0))
+				next = timeout;
+		}
+
+		if(next != 0) {
+			time_t sleepfor = next - time(NULL);
+			dbg("Set timeout to %ld", sleepfor);
+			struct timeval tv = {
+				.tv_sec = sleepfor,
+				.tv_usec = 0,
+			};
+			if(tv.tv_sec <= 0) {
+				timedout = true;
+			} else {
+				setsockopt(dht.sfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+			}
+		}
+
 		// Try to receive some data, this is a blocking call
 		struct sockaddr_storage remote;
 		socklen_t remote_len = sizeof(remote);

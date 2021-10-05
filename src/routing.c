@@ -213,6 +213,9 @@ void routing_oldest(struct entry** dest) {
 		if(!entry->set)
 			continue;
 
+		if(entry->expire == 0)
+			continue;
+
 		if(*dest == NULL) {
 			*dest = entry;
 			continue;
@@ -221,5 +224,27 @@ void routing_oldest(struct entry** dest) {
 		if(difftime((*dest)->expire, entry->expire) > 0.0) {
 			*dest = entry;
 		}
+	}
+}
+
+void routing_status(int* filled, int* size, double* load_factor, size_t load_factor_len) {
+	*size = ROUTINGSIZE;
+
+	*filled = 0;
+	for(size_t i = 0; i < ROUTINGSIZE; i++) {
+		if(table[i].set)
+			(*filled)++;
+	}
+
+	int per_bucket = ROUTINGSIZE / load_factor_len;
+	int overflow = ROUTINGSIZE % load_factor_len;
+	struct entry* table_cursor = table;
+	for(int i = 0; i < load_factor_len; i++) {
+		int is_overflow = i < overflow;
+		for(int j = 0; j < per_bucket + is_overflow; j++) {
+			load_factor[i] += table_cursor->set;
+			table_cursor++;
+		}
+		load_factor[i] /= per_bucket + is_overflow;
 	}
 }

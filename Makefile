@@ -23,6 +23,7 @@ TEST_LIB_SOURCES = thirdparty/Unity/src/unity.c
 TEST_LIB_OBJS = $(TEST_LIB_SOURCES:%.c=$(OBJDIR)/%.o)
 TEST_LIB_DEPS = $(TEST_LIB_SOURCES:%.c=%.d)
 TEST_LIB_INCS = -Ithirdparty/Unity/src
+TEST_LIB_CFLAGS = -DUNITY_INCLUDE_DOUBLE
 
 TEST_SOURCES = $(shell find $(TSTDIR) -name "*.c")
 TEST_EXES = $(TEST_SOURCES:%.c=$(OBJDIR)/%)
@@ -69,12 +70,18 @@ $(OBJDIR)/test/%.runner.c: test/%.c
 # Test code needs test includes
 $(OBJDIR)/test/%.o: test/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<
+	$(CC) $(CFLAGS) $(TEST_LIB_CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<
 
 # Generated test sources are located under obj 
 $(OBJDIR)/test/%.o: $(OBJDIR)/test/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<
+	$(CC) $(CFLAGS) $(TEST_LIB_CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<
+
+# Test code needs test includes
+$(OBJDIR)/thirdparty/Unity/%.o: thirdparty/Unity/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(TEST_LIB_CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<
+
 
 .DEFAULT_GOAL := all
 all: test dht

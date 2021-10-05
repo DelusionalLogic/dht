@@ -219,3 +219,64 @@ void test_get_after_offer_and_remove() {
 
 	TEST_ASSERT_NULL(e);
 }
+
+void test_close_to_self_load_factor() {
+	routing_flush();
+
+	// The address we are going to store
+	struct addr addr = (struct addr){.ip = IP(128,0,0,1), .port = 0};
+
+	// Make a nodeid that is one bit different
+	struct nodeid new = self;
+
+	new.inner[4] += 1;
+	struct entry* entry;
+	TEST_ASSERT_TRUE_MESSAGE(routing_offer(&new, &entry), "Did not accept new entry");
+
+	// Set the entries
+	entry->addr = addr;
+	entry->expire = time(NULL);
+
+	int filled;
+	int total;
+	double load_factor[8] = {0};
+	routing_status(&filled, &total, load_factor, 8);
+
+	TEST_ASSERT_EQUAL(1, filled);
+	TEST_ASSERT_EQUAL(1280, total);
+	// First bucket should have none
+	TEST_ASSERT_EQUAL_DOUBLE(0.0, load_factor[0]);
+	// The final bucket should have the one node
+	TEST_ASSERT_EQUAL_DOUBLE(1.0/(1280/8), load_factor[7]);
+}
+
+void test_far_from_self_load_factor() {
+	routing_flush();
+
+	// The address we are going to store
+	struct addr addr = (struct addr){.ip = IP(128,0,0,1), .port = 0};
+
+	// Make a nodeid that is one bit different
+	struct nodeid new = self;
+
+	// Flip top bit to make it very dissimilar
+	new.inner[0] ^= 0x80000000;
+	struct entry* entry;
+	TEST_ASSERT_TRUE_MESSAGE(routing_offer(&new, &entry), "Did not accept new entry");
+
+	// Set the entries
+	entry->addr = addr;
+	entry->expire = time(NULL);
+
+	int filled;
+	int total;
+	double load_factor[8] = {0};
+	routing_status(&filled, &total, load_factor, 8);
+
+	TEST_ASSERT_EQUAL(1, filled);
+	TEST_ASSERT_EQUAL(1280, total);
+	// First bucket should have the one node
+	TEST_ASSERT_EQUAL_DOUBLE(1.0/(1280/8), load_factor[0]);
+	// The final bucket should have none
+	TEST_ASSERT_EQUAL_DOUBLE(0.0, load_factor[7]);
+}

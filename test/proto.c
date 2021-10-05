@@ -208,6 +208,7 @@ void test_remove_from_routing_after_3_retries() {
 		// 1st retry
 		struct message* message_cursor = outbuff;
 		proto_run(&dht, NULL, 0, (struct sockaddr_in*)NULL, 0, now, &message_cursor, outbuff+2);
+		TEST_ASSERT_EQUAL_PTR_MESSAGE(message_cursor, outbuff+1, "Ping was not sent");
 	}
 
 	now += PROTO_TMOUT;
@@ -215,13 +216,7 @@ void test_remove_from_routing_after_3_retries() {
 		// 2nd retry
 		struct message* message_cursor = outbuff;
 		proto_run(&dht, NULL, 0, (struct sockaddr_in*)NULL, 0, now, &message_cursor, outbuff+2);
-	}
-
-	now += PROTO_TMOUT;
-	{
-		// 3rd retry
-		struct message* message_cursor = outbuff;
-		proto_run(&dht, NULL, 0, (struct sockaddr_in*)NULL, 0, now, &message_cursor, outbuff+2);
+		TEST_ASSERT_EQUAL_PTR_MESSAGE(message_cursor, outbuff+1, "Ping was not sent");
 	}
 
 	now += PROTO_TMOUT;
@@ -232,4 +227,60 @@ void test_remove_from_routing_after_3_retries() {
 	TEST_ASSERT_EQUAL_PTR_MESSAGE(message_cursor, outbuff, "The timeout should send a message");
 	entry = routing_get(&other);
 	TEST_ASSERT_NULL(entry);
+}
+
+void test_ping_node_when_uncertain() {
+	struct message outbuff[10] = {0};
+	time_t now = 0;
+
+	struct sockaddr_storage remote;
+	socklen_t remote_len;
+
+	struct dht dht;
+	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	struct nodeid other = (struct nodeid){.inner={0x61616161, 0x61616161, 0x61616161, 0x61616161, 0x61616161}};
+
+	{
+		struct message* message_cursor = outbuff;
+		proto_begin(&dht, 0, &message_cursor, outbuff+2);
+		remote_len = outbuff[0].dest_len;
+		memcpy(&remote, &outbuff[0].dest, remote_len);
+	}
+	now += 10;
+
+	{
+		// The node responds
+		// We return no new nodes to stop any new pings from going out
+		char buff[] = "d1:y1:r1:t1:01:rd2:id20:aaaaaaaaaaaaaaaaaaaa5:nodes0:""ee";
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+2);
+	}
+	struct entry* entry = routing_get(&other);
+	TEST_ASSERT_NOT_NULL(entry);
+
+	now += PROTO_UNCTM;
+	{
+		// The node becomes uncertain
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, NULL, 0, (struct sockaddr_in*)NULL, 0, now, &message_cursor, outbuff+2);
+
+		// Which should create a ping
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
+		TEST_ASSERT_EQUAL(91, outbuff[0].payload_len);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:", outbuff[0].payload, 43);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("e1:q9:find_node1:t1:01:y1:qe", outbuff[0].payload+63, 28);
+	}
+
+	now += 5;
+	{
+		// The node responds
+		char buff[] = "d1:y1:r1:t1:01:rd2:id20:aaaaaaaaaaaaaaaaaaaa5:nodes0:""ee";
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+2);
+
+		// The routing table entry should have its expiry time updated
+		struct entry* entry = routing_get(&other);
+		TEST_ASSERT_NOT_NULL(entry);
+		TEST_ASSERT_GREATER_THAN(now, entry->expire);
+	}
 }
