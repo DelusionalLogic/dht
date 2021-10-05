@@ -485,6 +485,9 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 
 		rc = handle_request(&dht->self, query, packet, packet_len, &cursor, end-cursor-1);
 		if(rc == QUERY_EUNK) {
+			// @FRAGILE: @HACK: Static offsets to fiddle with already written
+			// out packet data. Acceptable because this is the uncommon error
+			// case.
 			// The y key should have value e
 			*(cursor-4) = 'e';
 			// The r key is called e for errors
@@ -511,6 +514,8 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 		memcpy(&message->dest, remote, remote_len);
 		message->dest_len = remote_len;
 		(*msgbuff->messages)++;
+	} else {
+		fatal("HOW");
 	}
 
 	return 0;
