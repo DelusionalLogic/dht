@@ -58,7 +58,7 @@ version:
 # Run all tests
 .PHONY: test
 test: $(TEST_EXES)
-	$(foreach test,$(TEST_EXES),./$(test);)
+	$(foreach test,$(TEST_EXES),./$(test) &&) true
 
 $(OBJDIR)/test/%: $(APP_OBJS) $(TEST_LIB_OBJS) $(OBJDIR)/test/%.o $(OBJDIR)/test/%.runner.o
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
