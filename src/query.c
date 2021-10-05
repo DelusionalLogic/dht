@@ -75,6 +75,7 @@ int handle_request(struct nodeid* self, const char* method, const char* packet, 
 		if(rc < 0)
 			return QUERY_EBADQ;
 		*response += rc;
+	}else if(strcmp(method, "get_peers") == 0) {
 	} else {
 		return QUERY_EUNK;
 	}

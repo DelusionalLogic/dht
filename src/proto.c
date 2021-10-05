@@ -485,8 +485,19 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 
 		rc = handle_request(&dht->self, query, packet, packet_len, &cursor, end-cursor-1);
 		if(rc == QUERY_EUNK) {
-			dbg("DISCARD: Unknown query method");
-			return 0;
+			// The y key should have value e
+			*(cursor-4) = 'e';
+			// The r key is called e for errors
+			*(cursor-1) = 'e';
+
+			// Now create the payload
+			rc = snprintf(cursor, end-cursor, "li204e14:Unknown Methode");
+			if(rc < 0)
+				fatal("No space for response");
+			cursor += rc;
+			assert(cursor < end);
+
+			// Use the normal finalize flow
 		} else if(rc != 0) fatal("Error handling request");
 
 		rc = snprintf(cursor, end-cursor, "e");

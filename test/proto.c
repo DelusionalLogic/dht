@@ -111,6 +111,32 @@ void test_ping() {
 	TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:t2:aa1:y1:r1:rd2:id20:BBBBBBBBBBBBBBBBBBBBee", outbuff[0].payload, 47);
 }
 
+void test_unknown_method() {
+	struct message outbuff[2] = {0};
+
+	struct dht dht;
+	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	{
+		struct message* message_cursor = outbuff;
+		proto_begin(&dht, time(NULL), &message_cursor, outbuff+2);
+	}
+
+	struct sockaddr_in remote;
+	remote.sin_family = AF_INET;
+	inet_pton(AF_INET, "255.255.255.255", &remote.sin_addr.s_addr);
+	remote.sin_port = htons(6881);
+
+	char buff[] = "d1:q4:fake1:t2:aa1:y1:qe";
+	struct message* message_cursor = outbuff;
+	proto_run(&dht, buff, sizeof(buff), &remote, sizeof(remote), 0, &message_cursor, outbuff+2);
+
+	// We should have sent a response
+	TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
+
+	TEST_ASSERT_EQUAL(42, outbuff[0].payload_len);
+	TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:t2:aa1:y1:e1:eli204e14:Unknown Methodee", outbuff[0].payload, 42);
+}
+
 void test_note_times_out() {
 	routing_flush();
 	struct message outbuff[2] = {0};
