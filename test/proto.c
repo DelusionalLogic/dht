@@ -10,6 +10,8 @@ void test_begin_pings_bootstrap_node() {
 
 	struct dht dht;
 	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	routing_flush();
+	routing_init(&dht.self);
 
 	struct message* message_cursor = outbuff;
 	proto_begin(&dht, time(NULL), &message_cursor, outbuff+10);
@@ -28,6 +30,9 @@ void test_response_from_initial_probe() {
 
 	struct dht dht;
 	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	routing_flush();
+	routing_init(&dht.self);
+
 	{
 		struct message* message_cursor = outbuff;
 		proto_begin(&dht, time(NULL), &message_cursor, outbuff+2);
@@ -58,6 +63,8 @@ void test_reponse_from_wrong_ip() {
 
 	struct dht dht;
 	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	routing_flush();
+	routing_init(&dht.self);
 	{
 		struct message* message_cursor = outbuff;
 		proto_begin(&dht, time(NULL), &message_cursor, outbuff+2);
@@ -90,6 +97,8 @@ void test_ping() {
 
 	struct dht dht;
 	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	routing_flush();
+	routing_init(&dht.self);
 	{
 		struct message* message_cursor = outbuff;
 		proto_begin(&dht, time(NULL), &message_cursor, outbuff+2);
@@ -116,6 +125,8 @@ void test_unknown_method() {
 
 	struct dht dht;
 	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	routing_flush();
+	routing_init(&dht.self);
 	{
 		struct message* message_cursor = outbuff;
 		proto_begin(&dht, time(NULL), &message_cursor, outbuff+2);
@@ -146,6 +157,8 @@ void test_note_times_out() {
 
 	struct dht dht;
 	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	routing_flush();
+	routing_init(&dht.self);
 	{
 		struct message* message_cursor = outbuff;
 		proto_begin(&dht, 0, &message_cursor, outbuff+2);
@@ -176,6 +189,8 @@ void test_response_after_retry() {
 
 	struct dht dht;
 	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	routing_flush();
+	routing_init(&dht.self);
 
 	{
 		struct message* message_cursor = outbuff;
@@ -201,6 +216,8 @@ void test_remove_from_routing_after_3_retries() {
 
 	struct dht dht;
 	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	routing_flush();
+	routing_init(&dht.self);
 	struct nodeid other = (struct nodeid){.inner={0x61616161, 0x61616161, 0x61616161, 0x61616161, 0x61616161}};
 
 	{
@@ -264,6 +281,8 @@ void test_ping_node_when_uncertain() {
 
 	struct dht dht;
 	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	routing_flush();
+	routing_init(&dht.self);
 	struct nodeid other = (struct nodeid){.inner={0x61616161, 0x61616161, 0x61616161, 0x61616161, 0x61616161}};
 
 	{
@@ -320,6 +339,8 @@ void test_query_find_node() {
 
 	struct dht dht;
 	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	routing_flush();
+	routing_init(&dht.self);
 	struct nodeid other = (struct nodeid){.inner={0x61616161, 0x61616161, 0x61616161, 0x61616161, 0x61616161}};
 
 	{

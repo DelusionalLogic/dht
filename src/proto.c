@@ -180,7 +180,7 @@ PROCESS_TIMEOUT(getclient_timeout) {
 	size_t reqId = (typeof(dht->requestdata[0])*)((void*)cont - offsetof(typeof(dht->requestdata[0]), cont)) - dht->requestdata;
 
 	if(cont->ping.attempt >= 2) {
-		dbg("Timing out request %d after %d attempts", reqId, cont->ping.attempt);
+		dbg("Timing out request %ld after %d attempts", reqId, cont->ping.attempt);
 		if(cont->ping.is_new)
 			return 0;
 
@@ -190,7 +190,7 @@ PROCESS_TIMEOUT(getclient_timeout) {
 		return 0;
 	}
 
-	dbg("Retrying request %d", reqId);
+	dbg("Retrying request %ld", reqId);
 
 	if(*msgbuff->messages >= msgbuff->messages_end)
 		return PROTO_ENOREQ;
@@ -356,7 +356,6 @@ enum commandType {
 };
 
 void proto_begin(struct dht* dht, time_t now, struct message** output, const struct message* const output_end) {
-	routing_flush();
 	struct msgbuff msgbuff = {
 		output,
 		output_end,
@@ -367,7 +366,6 @@ void proto_begin(struct dht* dht, time_t now, struct message** output, const str
 		dht->reqalloc[i] = false;
 	}
 
-	routing_init(&dht->self);
 	dbgl_id(&dht->self);
 
 	dht->sfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -646,7 +644,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			}
 		}
 
-		dbg("%d/%d requests pending", allocated, MAX_INFLIGHT);
+		dbg("%ld/%ld requests pending", allocated, MAX_INFLIGHT);
 	}
 	{
 		int filled;
