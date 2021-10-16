@@ -114,8 +114,8 @@ void test_ping() {
 	int rc = handle_request(&self, "ping", packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(0, rc);
-	TEST_ASSERT_EQUAL(30, response_cursor - response);
-	TEST_ASSERT_EQUAL_CHAR_ARRAY("d2:id20:aaaaaaaaaaaaaaaaaaabee", response, 30);
+	TEST_ASSERT_EQUAL(29, response_cursor - response);
+	TEST_ASSERT_EQUAL_CHAR_ARRAY("d2:id20:aaaaaaaaaaaaaaaaaaabe", response, 30);
 }
 
 void test_bad_method() {

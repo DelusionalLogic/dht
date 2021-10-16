@@ -107,7 +107,7 @@ uint8_t rand_byte() {
 	return val;
 }
 
-int create_ping(char* buff, size_t* buff_len, struct nodeid* self, struct nodeid* target, uint16_t tid) {
+int write_ping(char* buff, size_t* buff_len, struct nodeid* self, struct nodeid* target, uint16_t tid) {
 	char* buff_end = buff + *buff_len;
 
 	int rc = snprintf(buff, buff_end - buff, "d1:ad2:id20:");
@@ -163,9 +163,10 @@ int send_ping(struct dht* dht, struct nodeid* expected, time_t now, bool node_is
 	for(uint8_t *target_byte = (uint8_t*)&target; target_byte < ((uint8_t*)&target)+sizeof(target); target_byte++) {
 		*target_byte = rand_byte();
 	}
+	target = dht->self;
 
 	message->payload_len = 128;
-	int rc = create_ping(message->payload, &message->payload_len, &dht->self, &target, reqId);
+	int rc = write_ping(message->payload, &message->payload_len, &dht->self, &target, reqId);
 	if(rc != 0) {
 		return rc;
 	}
@@ -179,6 +180,7 @@ PROCESS_TIMEOUT(getclient_timeout) {
 	size_t reqId = (typeof(dht->requestdata[0])*)((void*)cont - offsetof(typeof(dht->requestdata[0]), cont)) - dht->requestdata;
 
 	if(cont->ping.attempt >= 2) {
+		dbg("Timing out request %d after %d attempts", reqId, cont->ping.attempt);
 		if(cont->ping.is_new)
 			return 0;
 
@@ -204,7 +206,7 @@ PROCESS_TIMEOUT(getclient_timeout) {
 	}
 
 	message->payload_len = 128;
-	int rc = create_ping(message->payload, &message->payload_len, &dht->self, &target, reqId);
+	int rc = write_ping(message->payload, &message->payload_len, &dht->self, &target, reqId);
 	if(rc != 0) {
 		fatal("Can't create ping");
 	}
@@ -393,18 +395,6 @@ void proto_begin(struct dht* dht, time_t now, struct message** output, const str
 	}
 
 	for(struct addrinfo* cur = res; cur != NULL; cur = cur->ai_next) {
-		char buff[128];
-		inet_ntop(cur->ai_family, &((struct sockaddr_in*)cur->ai_addr)->sin_addr, buff, 128);
-		dbg("IP %s", buff);
-
-		/* size_t i = 0; */
-		/* int rc = snprintf(buff+i, 128-i, "d1:ad2:id20:"); */
-		/* i += rc; */
-		/* memcpy(buff+i, &self, sizeof(struct nodeid)); */
-		/* i += sizeof(struct nodeid); */
-		/* rc = snprintf(buff+i, 128-i, "e1:q4:ping1:t2:ab1:y1:qe"); */
-		/* i += rc; */
-
 		send_ping(dht, NULL, now, true, cur->ai_addr, cur->ai_addrlen, &msgbuff);
 	}
 

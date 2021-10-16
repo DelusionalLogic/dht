@@ -9,8 +9,8 @@
 #define MAX_DISC 32
 #define MAX_INFLIGHT 32
 
-#define PROTO_UNCTM 900
-#define PROTO_TMOUT 60
+#define PROTO_UNCTM 60
+#define PROTO_TMOUT 5
 
 struct ping {
 	struct nodeid remote_id;

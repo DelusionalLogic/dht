@@ -107,7 +107,7 @@ void test_ping() {
 	// We should have sent a response
 	TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
 
-	TEST_ASSERT_EQUAL(48, outbuff[0].payload_len);
+	TEST_ASSERT_EQUAL(47, outbuff[0].payload_len);
 	TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:t2:aa1:y1:r1:rd2:id20:BBBBBBBBBBBBBBBBBBBBee", outbuff[0].payload, 47);
 }
 
@@ -308,5 +308,55 @@ void test_ping_node_when_uncertain() {
 		struct entry* entry = routing_get(&other);
 		TEST_ASSERT_NOT_NULL(entry);
 		TEST_ASSERT_GREATER_THAN(now, entry->expire);
+	}
+}
+
+void test_query_find_node() {
+	struct message outbuff[10] = {0};
+	time_t now = 0;
+
+	struct sockaddr_storage remote;
+	socklen_t remote_len;
+
+	struct dht dht;
+	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	struct nodeid other = (struct nodeid){.inner={0x61616161, 0x61616161, 0x61616161, 0x61616161, 0x61616161}};
+
+	{
+		struct message* message_cursor = outbuff;
+		proto_begin(&dht, 0, &message_cursor, outbuff+2);
+		remote_len = outbuff[0].dest_len;
+		memcpy(&remote, &outbuff[0].dest, remote_len);
+	}
+	now += 10;
+
+	{
+		// The node responds
+		// We return no new nodes to stop any new pings from going out
+		char buff[] = "d1:y1:r1:t1:01:rd2:id20:aaaaaaaaaaaaaaaaaaaa5:nodes0:""ee";
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+2);
+	}
+	struct entry* entry = routing_get(&other);
+	TEST_ASSERT_NOT_NULL(entry);
+
+	{
+		struct sockaddr_in other;
+		other.sin_family = AF_INET;
+		inet_pton(AF_INET, "255.255.255.255", &other.sin_addr.s_addr);
+		other.sin_port = htons(6881);
+
+		char buff[] = "d1:ad2:id20:abcdefghij01234567896:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t2:aa1:y1:qe";
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, buff, sizeof(buff), &other, sizeof(other), 0, &message_cursor, outbuff+2);
+
+		// We should have sent a response
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
+
+		TEST_ASSERT_EQUAL(83, outbuff[0].payload_len);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:t2:aa1:y1:r1:rd2:id20:BBBBBBBBBBBBBBBBBBBB5:nodes26:aaaaaaaaaaaaaaaaaaaa", outbuff[0].payload, 75);
+		TEST_ASSERT_EQUAL_MEMORY(&((struct sockaddr_in*)&remote)->sin_addr.s_addr, outbuff[0].payload+75, 4);
+		TEST_ASSERT_EQUAL_MEMORY(&((struct sockaddr_in*)&remote)->sin_port, outbuff[0].payload+79, 2);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("ee", outbuff[0].payload+81, 2);
 	}
 }
