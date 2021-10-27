@@ -49,7 +49,7 @@ struct dht {
 };
 
 struct message {
-	char payload[128];
+	char payload[1024];
 	size_t payload_len;
 	struct sockaddr_storage dest;
 	socklen_t dest_len;

@@ -320,6 +320,7 @@ PROCESS_REPONSE(getclient_response) {
 		}
 	} else {
 		struct entry* entry = routing_get(&id);
+		assert(entry != NULL);
 		entry->expire = now + PROTO_UNCTM;
 	}
 
@@ -457,7 +458,7 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 		assert(*msgbuff->messages < msgbuff->messages_end);
 		struct message* message = *msgbuff->messages;
 
-		char* end = message->payload+128;
+		char* end = message->payload+sizeof(message->payload);
 		char* cursor = message->payload;
 
 		int rc = snprintf(cursor, end-cursor , "d1:t%ld:", transaction_len);
