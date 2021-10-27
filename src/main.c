@@ -21,10 +21,11 @@ int main(int argc, char** argv) {
 
 	struct dht dht;
 	dht.self = (struct nodeid){.inner={0xebe9bbf1, 0x3cdba6b3, 0x993e0c87, 0x900d5e25}};
+	routing_init(&dht.self);
+
 	struct message* message_cursor = outbuff;
 	proto_begin(&dht, time(NULL), &message_cursor, outbuff+32);
 	flush_messages(dht.sfd, outbuff, message_cursor);
-
 
 	char buff_storage[2049];
 	int rc = 0;

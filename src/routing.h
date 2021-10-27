@@ -6,6 +6,12 @@
 #include <time.h>
 #include <stdio.h>
 
+#define RT_IDBITS 160
+#define RT_BSIZE 8
+// The 3 here is log2(BUCKETSIZE), since the final bucket will contain all those combinations
+#define RT_BBITS 3
+#define RT_SIZE (RT_IDBITS * RT_BSIZE)
+
 struct addr {
 	uint32_t ip;
 	uint16_t port;

@@ -32,22 +32,21 @@
 //  <----------Detail---------->
 //
 
-#define IDBITS 160
-#define BUCKETSIZE 8
-// The 3 here is log2(BUCKETSIZE), since the final bucket will contain all those combinations
-#define BUCKETBITS 3
-#define ROUTINGSIZE (IDBITS * BUCKETSIZE)
+struct table {
+	struct nodeid myID;
+	struct entry table[RT_SIZE];
+};
 
-struct nodeid myID;
-struct entry table[ROUTINGSIZE];
+struct table* pTable;
 
 void routing_init(struct nodeid* myid) {
-	myID = *myid;
+	pTable = malloc(sizeof(struct table));
+	pTable->myID = *myid;
 	routing_flush();
 }
 
 void routing_flush() {
-	memset(table, 0, sizeof(table));
+	memset(pTable->table, 0, sizeof(pTable->table));
 }
 
 // Calculate the common bit prefix between two node ids.
@@ -68,16 +67,16 @@ static uint8_t prefix(struct nodeid* a, struct nodeid* b) {
 }
 
 static int8_t scan(uint16_t baseIndex, struct nodeid* id) {
-	assert(baseIndex < ROUTINGSIZE - BUCKETSIZE);
+	assert(baseIndex < RT_SIZE - RT_BSIZE);
 	int8_t index = -2;
 
-	for(size_t i = baseIndex; i < baseIndex + BUCKETSIZE; i++) {
-		if(!table[i].set) {
+	for(size_t i = baseIndex; i < baseIndex + RT_BSIZE; i++) {
+		if(!pTable->table[i].set) {
 			index = index == -2 ? i - baseIndex : index;
 			continue;
 		}
 
-		if(memcmp(&table[i].id, id, sizeof(struct nodeid)) == 0) {
+		if(memcmp(&pTable->table[i].id, id, sizeof(struct nodeid)) == 0) {
 			return -1;
 		}
 	}
@@ -86,23 +85,23 @@ static int8_t scan(uint16_t baseIndex, struct nodeid* id) {
 }
 
 static uint16_t base_bucket(struct nodeid* id) {
-	uint16_t bucketIndex = prefix(&myID, id);
-	assert(bucketIndex != IDBITS);
+	uint16_t bucketIndex = prefix(&pTable->myID, id);
+	assert(bucketIndex != RT_IDBITS);
 
 	// If they are sufficiently similar they end up in the final bucket. Clamp the index to ensure.
-	bucketIndex = bucketIndex > (IDBITS - BUCKETBITS) ? (IDBITS - BUCKETBITS) : bucketIndex;
-	assert(bucketIndex <= IDBITS - BUCKETBITS);
+	bucketIndex = bucketIndex > (RT_IDBITS - RT_BBITS) ? (RT_IDBITS - RT_BBITS) : bucketIndex;
+	assert(bucketIndex <= RT_IDBITS - RT_BBITS);
 
-	return bucketIndex * BUCKETSIZE;
+	return bucketIndex * RT_BSIZE;
 }
 
 struct entry* routing_get(struct nodeid* id) {
 	uint16_t baseIndex = base_bucket(id);
-	for(size_t i = baseIndex; i < baseIndex + BUCKETSIZE; i++) {
-		if(!table[i].set) continue;
+	for(size_t i = baseIndex; i < baseIndex + RT_BSIZE; i++) {
+		if(!pTable->table[i].set) continue;
 
-		if(memcmp(&table[i].id, id, sizeof(struct nodeid)) == 0) {
-			return &table[i];
+		if(memcmp(&pTable->table[i].id, id, sizeof(struct nodeid)) == 0) {
+			return &pTable->table[i];
 		}
 	}
 
@@ -116,9 +115,9 @@ void routing_remove(struct nodeid* id) {
 }
 
 bool routing_interested(struct nodeid* id) {
-	uint16_t bucketIndex = prefix(&myID, id);
+	uint16_t bucketIndex = prefix(&pTable->myID, id);
 	// The nodeid is the same as our own
-	if(bucketIndex == IDBITS) {
+	if(bucketIndex == RT_IDBITS) {
 		return false;
 	}
 
@@ -135,9 +134,9 @@ bool routing_interested(struct nodeid* id) {
 
 // Offer the routing table a new node
 bool routing_offer(struct nodeid* id, struct entry **dest) {
-	uint16_t bucketIndex = prefix(&myID, id);
+	uint16_t bucketIndex = prefix(&pTable->myID, id);
 	// The nodeid is the same as our own
-	if(bucketIndex == IDBITS) {
+	if(bucketIndex == RT_IDBITS) {
 		return false;
 	}
 
@@ -149,7 +148,7 @@ bool routing_offer(struct nodeid* id, struct entry **dest) {
 		return false;
 	}
 
-	struct entry* entry = &table[baseIndex + inBucketIndex];
+	struct entry* entry = &pTable->table[baseIndex + inBucketIndex];
 	entry->set = true;
 	entry->id = *id;
 
@@ -174,16 +173,16 @@ int compareItem(const void* a_v, const void* b_v) {
 }
 
 size_t routing_closest(struct nodeid* needle, size_t n, struct entry** res) {
-	assert(n <= ROUTINGSIZE);
-	static struct item items[ROUTINGSIZE] = {0};
-	for(uint16_t i = 0; i < ROUTINGSIZE; i++) {
+	assert(n <= RT_SIZE);
+	static struct item items[RT_SIZE] = {0};
+	for(uint16_t i = 0; i < RT_SIZE; i++) {
 		items[i].index = i;
 	}
 
 	{
 		struct item* item;
 		struct entry* entry;
-		for(item = &items[0], entry = &table[0]; item < &items[ROUTINGSIZE] && entry < &table[ROUTINGSIZE]; item++, entry++){
+		for(item = &items[0], entry = &pTable->table[0]; item < &items[RT_SIZE] && entry < &pTable->table[RT_SIZE]; item++, entry++){
 			item->set = entry->set;
 			for(uint8_t j = 0; j < 5; j++) {
 				item->distance.inner[j] = entry->id.inner[j] ^ needle->inner[j];
@@ -194,13 +193,13 @@ size_t routing_closest(struct nodeid* needle, size_t n, struct entry** res) {
 	// @PERFORMANCE: There's an algorithm known as quickselect which can select
 	// the top k elements from a list while only doing a partial sort.
 	// I imagine that would be more efficient than this full sort.
-	qsort(items, ROUTINGSIZE, sizeof(struct item), compareItem);
+	qsort(items, RT_SIZE, sizeof(struct item), compareItem);
 
 	size_t read;
 	for(read = 0; read < n; read++) {
 		if(!items[read].set)
 			break;
-		res[read] = &table[items[read].index];
+		res[read] = &pTable->table[items[read].index];
 	}
 
 	return read;
@@ -209,7 +208,7 @@ size_t routing_closest(struct nodeid* needle, size_t n, struct entry** res) {
 void routing_oldest(struct entry** dest) {
 	*dest = NULL;
 
-	for(struct entry* entry = table; entry < table+ROUTINGSIZE; entry++){
+	for(struct entry* entry = pTable->table; entry < pTable->table+RT_SIZE; entry++){
 		if(!entry->set)
 			continue;
 
@@ -228,17 +227,17 @@ void routing_oldest(struct entry** dest) {
 }
 
 void routing_status(int* filled, int* size, double* load_factor, size_t load_factor_len) {
-	*size = ROUTINGSIZE;
+	*size = RT_SIZE;
 
 	*filled = 0;
-	for(size_t i = 0; i < ROUTINGSIZE; i++) {
-		if(table[i].set)
+	for(size_t i = 0; i < RT_SIZE; i++) {
+		if(pTable->table[i].set)
 			(*filled)++;
 	}
 
-	int per_bucket = ROUTINGSIZE / load_factor_len;
-	int overflow = ROUTINGSIZE % load_factor_len;
-	struct entry* table_cursor = table;
+	int per_bucket = RT_SIZE / load_factor_len;
+	int overflow = RT_SIZE % load_factor_len;
+	struct entry* table_cursor = pTable->table;
 	for(int i = 0; i < load_factor_len; i++) {
 		int is_overflow = i < overflow;
 		for(int j = 0; j < per_bucket + is_overflow; j++) {
