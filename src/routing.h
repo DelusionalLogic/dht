@@ -27,9 +27,14 @@ struct nodeid {
 struct entry {
 	bool set;
 	struct nodeid id;
-	time_t expire;
 	struct addr addr;
+
+	time_t expire;
 };
+
+extern struct nodeid myID;
+extern struct entry table[];
+extern int table_size;
 
 void routing_init(struct nodeid* myid);
 void routing_flush();

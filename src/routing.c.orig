@@ -7,7 +7,6 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <arpa/inet.h>
 
 // The DHT routing table has a keyspace of 0 -- 2^160 split into buckets of 8.
 // When a bucket becomes full, we split it in half. As we further expand the
@@ -33,12 +32,26 @@
 //  <----------Detail---------->
 //
 
+<<<<<<< HEAD
 struct table {
 	struct nodeid myID;
 	struct entry table[RT_SIZE];
 };
 
 struct table* pTable;
+=======
+#include<arpa/inet.h>
+
+#define IDBITS 160
+#define BUCKETSIZE 8
+// The 3 here is log2(BUCKETSIZE), since the final bucket will contain all those combinations
+#define BUCKETBITS 3
+#define ROUTINGSIZE (IDBITS * BUCKETSIZE)
+
+struct nodeid myID;
+struct entry table[ROUTINGSIZE];
+int table_size = ROUTINGSIZE;
+>>>>>>> 685b13e (I don't remember)
 
 void routing_init(struct nodeid* myid) {
 	pTable = malloc(sizeof(struct table));

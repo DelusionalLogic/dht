@@ -63,7 +63,11 @@ struct dht {
 //   ee            <--  2 bytes
 //   TOTAL            281 bytes
 struct message {
+<<<<<<< HEAD
+	char payload[1024];
+=======
 	char payload[281];
+>>>>>>> 685b13e (I don't remember)
 	size_t payload_len;
 	struct sockaddr_storage dest;
 	socklen_t dest_len;

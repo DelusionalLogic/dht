@@ -1,9 +1,12 @@
 #include "unity.h"
 #include "proto.h"
+#include "peers.h"
 
 #include "log.h"
 
 #include <string.h>
+
+#define IP(a, b, c, d) htonl(a << 24 | b << 16 | c << 8 | d)
 
 void test_begin_pings_bootstrap_node() {
 	struct message outbuff[10] = {0};
@@ -222,7 +225,7 @@ void test_remove_from_routing_after_3_retries() {
 	{
 		// The node responds
 		// We return no new nodes to stop any new pings from going out
-		char buff[] = "d1:y1:r1:t1:01:rd2:id20:aaaaaaaaaaaaaaaaaaaa5:nodes0:""ee";
+		char buff[] = "d1:y1:r1:t1:01:rd2:id20:aaaaaaaaaaaaaaaaaaaa5:nodes0:ee";
 		struct message* message_cursor = outbuff;
 		proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+2);
 	}
@@ -258,7 +261,7 @@ void test_remove_from_routing_after_3_retries() {
 	struct message* message_cursor = outbuff;
 	proto_run(&dht, NULL, 0, (struct sockaddr_in*)NULL, 0, now, &message_cursor, outbuff+2);
 
-	TEST_ASSERT_EQUAL_PTR_MESSAGE(message_cursor, outbuff, "The timeout should send a message");
+	TEST_ASSERT_EQUAL_PTR_MESSAGE(message_cursor, outbuff, "The timeout should send not a message");
 	entry = routing_get(&other);
 	TEST_ASSERT_NULL(entry);
 }
@@ -286,7 +289,7 @@ void test_ping_node_when_uncertain() {
 	{
 		// The node responds
 		// We return no new nodes to stop any new pings from going out
-		char buff[] = "d1:y1:r1:t1:01:rd2:id20:aaaaaaaaaaaaaaaaaaaa5:nodes0:""ee";
+		char buff[] = "d1:y1:r1:t1:01:rd2:id20:aaaaaaaaaaaaaaaaaaaa5:nodes0:ee";
 		struct message* message_cursor = outbuff;
 		proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+2);
 	}
@@ -309,7 +312,7 @@ void test_ping_node_when_uncertain() {
 	now += 5;
 	{
 		// The node responds
-		char buff[] = "d1:y1:r1:t1:01:rd2:id20:aaaaaaaaaaaaaaaaaaaa5:nodes0:""ee";
+		char buff[] = "d1:y1:r1:t1:01:rd2:id20:aaaaaaaaaaaaaaaaaaaa5:nodes0:ee";
 		struct message* message_cursor = outbuff;
 		proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+2);
 
@@ -343,7 +346,7 @@ void test_query_find_node() {
 	{
 		// The node responds
 		// We return no new nodes to stop any new pings from going out
-		char buff[] = "d1:y1:r1:t1:01:rd2:id20:aaaaaaaaaaaaaaaaaaaa5:nodes0:""ee";
+		char buff[] = "d1:y1:r1:t1:01:rd2:id20:aaaaaaaaaaaaaaaaaaaa5:nodes0:ee";
 		struct message* message_cursor = outbuff;
 		proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+2);
 	}
@@ -368,5 +371,104 @@ void test_query_find_node() {
 		TEST_ASSERT_EQUAL_MEMORY(&((struct sockaddr_in*)&remote)->sin_addr.s_addr, outbuff[0].payload+75, 4);
 		TEST_ASSERT_EQUAL_MEMORY(&((struct sockaddr_in*)&remote)->sin_port, outbuff[0].payload+79, 2);
 		TEST_ASSERT_EQUAL_CHAR_ARRAY("ee", outbuff[0].payload+81, 2);
+	}
+}
+
+void test_query_get_peers_have_one() {
+	struct message outbuff[10] = {0};
+	time_t now = 0;
+
+	struct sockaddr_storage remote;
+	socklen_t remote_len;
+
+	allocate_hashtable();
+
+	struct dht dht;
+	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	routing_init(&dht.self);
+
+	{
+		struct message* message_cursor = outbuff;
+		proto_begin(&dht, 0, &message_cursor, outbuff+2);
+		remote_len = outbuff[0].dest_len;
+		memcpy(&remote, &outbuff[0].dest, remote_len);
+	}
+	now += 10;
+
+	{
+		// The node responds
+		// We return no new nodes to stop any new pings from going out
+		char buff[] = "d1:y1:r1:t1:01:rd2:id20:aaaaaaaaaaaaaaaaaaaa5:nodes0:ee";
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+2);
+	}
+	now += 1;
+
+	// Some other node then asks for peers
+	{
+		struct sockaddr_in other;
+		other.sin_family = AF_INET;
+		inet_pton(AF_INET, "128.0.0.1", &other.sin_addr.s_addr);
+		other.sin_port = htons(9090);
+
+		// Node asks for peers to get token
+		char buff[] = "d1:ad2:id20:abcdefghij01234567899:info_hash20:aaaaaaaaaaaaaaaaaaaae1:q9:get_peers1:t2:aa1:y1:qe";
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, buff, sizeof(buff), &other, sizeof(other), 0, &message_cursor, outbuff+2);
+
+		// We should have sent a response
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
+
+		TEST_ASSERT_EQUAL(93, outbuff[0].payload_len);
+		char* cursor = outbuff[0].payload;
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:t2:aa1:y1:r1:rd2:id20:BBBBBBBBBBBBBBBBBBBB5:token1:t5:nodes26:aaaaaaaaaaaaaaaaaaaa", cursor, 85);
+		cursor+=85;
+		TEST_ASSERT_EQUAL_MEMORY(&((struct sockaddr_in*)&remote)->sin_addr.s_addr, cursor, 4);
+		cursor+=4;
+		TEST_ASSERT_EQUAL_MEMORY(&((struct sockaddr_in*)&remote)->sin_port, cursor, 2);
+		cursor+=2;
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("ee", cursor, 2);
+		cursor+=2;
+	}
+	now += 1;
+
+	// Using the token from before that node then announces that it's a peer
+	{
+		struct sockaddr_in other;
+		other.sin_family = AF_INET;
+		inet_pton(AF_INET, "128.0.0.1", &other.sin_addr.s_addr);
+		other.sin_port = htons(9090);
+
+		// Node announces that it's a peer for that torrent
+		char buff[] = "d1:ad2:id20:abcdefghij012345678912:implied_porti1e9:info_hash20:aaaaaaaaaaaaaaaaaaaa4:porti1337e5:token1:te1:q13:announce_peer1:t2:aa1:y1:qe";
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&other, sizeof(other), now, &message_cursor, outbuff+2);
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
+
+		TEST_ASSERT_EQUAL(47, outbuff[0].payload_len);
+		char* cursor = outbuff[0].payload;
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:t2:aa1:y1:r1:rd2:id20:BBBBBBBBBBBBBBBBBBBBee", cursor, 47);
+		cursor+=47;
+	}
+	now += 1;
+
+	// A third node should now get that peer when asking
+	{
+		struct sockaddr_in other;
+		other.sin_family = AF_INET;
+		inet_pton(AF_INET, "255.255.255.255", &other.sin_addr.s_addr);
+		other.sin_port = htons(6881);
+
+		char buff[] = "d1:ad2:id20:abcdefghij01234567899:info_hash20:aaaaaaaaaaaaaaaaaaaae1:q9:get_peers1:t2:aa1:y1:qe";
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, buff, sizeof(buff), &other, sizeof(other), 0, &message_cursor, outbuff+2);
+
+		// We should have sent a response
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
+
+		TEST_ASSERT_EQUAL(75, outbuff[0].payload_len);
+		char* cursor = outbuff[0].payload;
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:t2:aa1:y1:r1:rd2:id20:BBBBBBBBBBBBBBBBBBBB5:token1:t6:valuesl6:\x80\x00\x00\x01\x23\x82""eee", cursor, 75);
+		cursor+=75;
 	}
 }

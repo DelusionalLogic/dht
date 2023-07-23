@@ -1,7 +1,9 @@
 #include "unity.h"
 #include "routing.h"
 
-#define IP(a, b, c, d) (a << 24 | b << 16 | c << 8 | d)
+#include <arpa/inet.h>
+
+#define IP(a, b, c, d) htonl(a << 24 | b << 16 | c << 8 | d)
 
 struct nodeid self;
 
@@ -229,7 +231,7 @@ void test_close_to_self_load_factor() {
 	// Make a nodeid that is one bit different
 	struct nodeid new = self;
 
-	new.inner[4] += 1;
+	new.inner[4] += ntohl(1);
 	struct entry* entry;
 	TEST_ASSERT_TRUE_MESSAGE(routing_offer(&new, &entry), "Did not accept new entry");
 
@@ -260,7 +262,7 @@ void test_far_from_self_load_factor() {
 	struct nodeid new = self;
 
 	// Flip top bit to make it very dissimilar
-	new.inner[0] ^= 0x80000000;
+	new.inner[0] ^= ntohl(0x80000000);
 	struct entry* entry;
 	TEST_ASSERT_TRUE_MESSAGE(routing_offer(&new, &entry), "Did not accept new entry");
 

@@ -93,6 +93,10 @@ int main(int argc, char** argv) {
 		fatal("Couldn't set signal handler");
 
 	struct dht dht;
+<<<<<<< HEAD
+	dht.self = (struct nodeid){.inner={0xebe9bbf1, 0x3cdba6b3, 0x993e0c87, 0x900d5e25}};
+	routing_init(&dht.self);
+=======
 	{
 		int rc = read_config();
 		if(rc == CONF_ENO) {
@@ -103,13 +107,19 @@ int main(int argc, char** argv) {
 
 		dht.self = myID;
 	}
+>>>>>>> 685b13e (I don't remember)
 
 	struct message* message_cursor = outbuff;
 	proto_begin(&dht, time(NULL), &message_cursor, outbuff+32);
 	flush_messages(dht.sfd, outbuff, message_cursor);
 
+<<<<<<< HEAD
+	char buff_storage[2049];
+=======
+
 #define RECV_BUFF_SIZE 4096
 	char buff_storage[RECV_BUFF_SIZE+1];
+>>>>>>> 685b13e (I don't remember)
 	int rc = 0;
 	while(rc == 0 && !killed) {
 		char* buff = buff_storage;
