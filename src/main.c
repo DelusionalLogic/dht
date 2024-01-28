@@ -81,8 +81,21 @@ void flush_messages(int sfd, struct message* cursor, const struct message* const
 	}
 }
 
+struct lookup {
+	struct nodeid target;
+
+	struct nodeid closest[8];
+	struct addr closest_addr[8];
+	bool closest_valid[8]; // @SLOP: This could be a single word
+
+	uint64_t outstanding;
+
+	time_t wake;
+};
+
+#define OUTBOX_SIZE 32
 int main(int argc, char** argv) {
-	struct message outbuff[32] = {0};
+	struct message outbuff[OUTBOX_SIZE] = {0};
 
 	struct sigaction sa;
 	sa.sa_handler = sigint_handler;
@@ -92,11 +105,11 @@ int main(int argc, char** argv) {
 	if(sigaction(SIGINT, &sa, NULL) == -1)
 		fatal("Couldn't set signal handler");
 
-	struct dht dht;
+	struct dht dht = {0};
 	{
 		int rc = read_config();
 		if(rc == CONF_ENO) {
-			myID = (struct nodeid){.inner={0xebe9bbf1, 0x3cdba6b3, 0x993e0c87, 0x900d5e25}};
+			myID = (struct nodeid){.inner={0xebe9bbf1, 0x3cdba6b3, 0x993e0c87, 0x900d5e25, 0x00000000}};
 			routing_flush();
 			allocate_hashtable();
 		}
@@ -108,6 +121,21 @@ int main(int argc, char** argv) {
 	proto_begin(&dht, time(NULL), &message_cursor, outbuff+32);
 	flush_messages(dht.sfd, outbuff, message_cursor);
 
+	struct lookup lookup;
+	// Init the lookup
+	{
+		lookup.wake = 0;
+		lookup.target = (struct nodeid){.inner={0x19b8a941, 0x38fa0191, 0x1403fac2, 0x581000ab, 0x19583cda}};
+
+		struct entry* entry[8];
+		int found = routing_closest(&lookup.target, 8, entry);
+		for(size_t i = 0; i < found; i++) {
+			lookup.closest[i] = entry[i]->id;
+			lookup.closest_addr[i] = entry[i]->addr;
+			lookup.closest_valid[i] = true;
+		}
+	}
+
 #define RECV_BUFF_SIZE 4096
 	char buff_storage[RECV_BUFF_SIZE+1];
 	int rc = 0;
@@ -115,24 +143,7 @@ int main(int argc, char** argv) {
 		char* buff = buff_storage;
 
 		bool timedout = false;
-		time_t next = 0;
-		if(!dht.pause){
-			struct entry* oldest;
-			routing_oldest(&oldest);
-			if(oldest != NULL)
-				next = oldest->expire;
-		} else {
-			dbg("DHT timeout is paused");
-		}
-
-		for(int i = 0; i < MAX_INFLIGHT; i++) {
-			if(!dht.reqalloc[i])
-				continue;
-
-			time_t timeout = dht.requestdata[i].timeout;
-			if(next == 0 || (timeout != 0 && difftime(timeout, next) < 0))
-				next = timeout;
-		}
+		time_t next = dht.wake;
 
 		if(next != 0) {
 			time_t sleepfor = next - time(NULL);
@@ -180,7 +191,7 @@ int main(int argc, char** argv) {
 
 		struct message* message_cursor = outbuff;
 		time_t now = time(NULL);
-		rc = proto_run(&dht, buff, recv_len, (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+10);
+		rc = proto_run(&dht, buff, recv_len, (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+OUTBOX_SIZE);
 		flush_messages(dht.sfd, outbuff, message_cursor);
 	}
 

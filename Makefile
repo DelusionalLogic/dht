@@ -6,14 +6,15 @@ GENDIR ?= gen
 OBJDIR ?= obj
 
 LIBS = -lm
-INCS = -Isrc/ -Igen/ -I.
+INCS = -Isrc/ -Igen/ -I. -Ithirdparty/crypto-algorithms/
 
-CFLAGS ?= -O3 -D_FORTIFY_SOURCE=2 -Wall
+CFLAGS ?= -O3 -D_FORTIFY_SOURCE=2 -Wall -g
 # add all the required Cflags
 CFLAGS += -std=gnu11 -fms-extensions -flto
 
 APP_MAIN_SOURCES = src/main.c
 APP_SOURCES = $(filter-out $(APP_MAIN_SOURCES),$(shell find $(SRCDIR) -name "*.c"))
+APP_SOURCES += thirdparty/crypto-algorithms/sha256.c
 APP_OBJS = $(APP_SOURCES:%.c=$(OBJDIR)/%.o)
 APP_MAIN_OBJS = $(APP_MAIN_SOURCES:%.c=$(OBJDIR)/%.o)
 APP_DEPS = $(APP_OBJS:%.o=%.d)
@@ -22,7 +23,7 @@ APP_MAIN_DEPS = $(APP_MAIN_OBJS:%.o=%.d)
 TEST_LIB_SOURCES = thirdparty/Unity/src/unity.c
 TEST_LIB_OBJS = $(TEST_LIB_SOURCES:%.c=$(OBJDIR)/%.o)
 TEST_LIB_DEPS = $(TEST_LIB_SOURCES:%.c=%.d)
-TEST_LIB_INCS = -Ithirdparty/Unity/src
+TEST_LIB_INCS = -Ithirdparty/Unity/src/
 TEST_LIB_CFLAGS = -DUNITY_INCLUDE_DOUBLE
 
 TEST_SOURCES = $(shell find $(TSTDIR) -name "*.c")
@@ -72,7 +73,7 @@ $(OBJDIR)/test/%.o: test/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(TEST_LIB_CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<
 
-# Generated test sources are located under obj 
+# Generated test sources are located under obj
 $(OBJDIR)/test/%.o: $(OBJDIR)/test/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(TEST_LIB_CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<

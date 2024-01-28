@@ -2,13 +2,14 @@
 #include "benc.h"
 #include "log.h"
 #include "peers.h"
+#include "sha256.h"
 
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
 #include <arpa/inet.h>
 
-int handle_request(struct nodeid* self, const char* method, const struct sockaddr* src, socklen_t src_len, const char* packet, size_t packet_len, char** response, size_t response_len) {
+int handle_request(struct nodeid* self, struct tokens *tokens, time_t now, const char* method, const struct sockaddr* src, socklen_t src_len, const char* packet, size_t packet_len, char** response, size_t response_len) {
 	if(strcmp(method, "ping") == 0) {
 		struct bcursor bcursor;
 		struct benc_node stream[256];
@@ -231,6 +232,13 @@ int handle_request(struct nodeid* self, const char* method, const struct sockadd
 			return QUERY_EBADQ;
 		}
 
+		struct addr src_addr;
+		{
+			struct sockaddr_in* ipv4 = (struct sockaddr_in*)src;
+			src_addr.ip = ipv4->sin_addr.s_addr;
+			src_addr.port = ipv4->sin_port;
+		}
+
 		char* end = (*response) + response_len;
 
 		int rc = snprintf(*response, end-*response, "d2:id20:");
@@ -243,17 +251,20 @@ int handle_request(struct nodeid* self, const char* method, const struct sockadd
 		*response += sizeof(struct nodeid);
 		assert(*response < end);
 
-		rc = snprintf(*response, end-*response, "5:token1:t");
-		if(rc < 0)
-			return QUERY_EBADQ;
-		*response += rc;
-		assert(*response < end);
-
 		struct addr* peers;
 		size_t peers_len;
 		get_peers(&infohash, &peers, &peers_len);
 
+		char token[SHA256_BLOCK_SIZE];
+		token_create(tokens, now, &src_addr, token);
+
 		if(peers != NULL) {
+			rc = snprintf(*response, end-*response, "5:token%ld:%.*s", sizeof(token), (int)sizeof(token), token);
+			if(rc < 0)
+				return QUERY_EBADQ;
+			*response += rc;
+			assert(*response < end);
+
 			rc = snprintf(*response, end-*response, "6:valuesl");
 			if(rc < 0)
 				return QUERY_EBADQ;
@@ -297,6 +308,14 @@ int handle_request(struct nodeid* self, const char* method, const struct sockadd
 				*response += sizeof(uint16_t); // 2
 				assert(*response < end);
 			}
+
+			int pos;
+			rc = snprintf(*response, end-*response, "5:token%ld:%n%*s", sizeof(token), &pos, (int)sizeof(token), " ");
+			memcpy((*response) + pos, token, sizeof(token));
+			if(rc < 0)
+				return QUERY_EBADQ;
+			*response += rc;
+			assert(*response < end);
 		}
 
 		rc = snprintf(*response, end-*response, "e");
@@ -339,7 +358,7 @@ int handle_request(struct nodeid* self, const char* method, const struct sockadd
 		uint16_t port;
 
 		bool token_set = false;
-		char token;
+		char token[SHA256_BLOCK_SIZE];
 
 		while(bcursor.readhead->type != BNT_END) {
 			switch(bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING, BNT_STRING, BNT_STRING, BNT_STRING}, (const char*[]){"implied_port", "info_hash", "port", "token"}, (const size_t[]){12, 9, 4, 5}, 4)) {
@@ -403,13 +422,13 @@ int handle_request(struct nodeid* self, const char* method, const struct sockadd
 						return QUERY_EBADQ;
 					}
 
-					if(bcursor.readhead->size != 1) {
+					if(bcursor.readhead->size != SHA256_BLOCK_SIZE) {
 						err("Bad query: Incorrect token length");
 						return QUERY_EBADQ;
 					}
 
 					token_set = true;
-					token = *bcursor.readhead->loc;
+					memcpy(&token, bcursor.readhead->loc, SHA256_BLOCK_SIZE);
 
 					bcur_next(&bcursor, 1);
 					break;
@@ -421,21 +440,26 @@ int handle_request(struct nodeid* self, const char* method, const struct sockadd
 			return QUERY_EBADQ;
 		}
 
-		if(token != 't') {
-			err("Invalid token");
-			return QUERY_EBADQ;
-		}
-
 		{
 			struct sockaddr_in* ipv4 = (struct sockaddr_in*)src;
 			struct addr src_addr;
 			src_addr.ip = ipv4->sin_addr.s_addr;
 
 			src_addr.port = ipv4->sin_port;
+
+			if(token_validate(tokens, now, &src_addr, token) != TOK_VALI) {
+				err("Invalid token");
+				return QUERY_EBADQ;
+			}
+
 			if(!implied_port) {
 				src_addr.port = htons(port);
 			}
-			add_peer(&infohash, &src_addr);
+			int rc = add_peer(&infohash, &src_addr);
+			if(rc == PEER_EFULL) {
+			} else if(rc != 0) {
+				fatal("Could not add peer (%d)", rc);
+			}
 		}
 
 		// Write out the response

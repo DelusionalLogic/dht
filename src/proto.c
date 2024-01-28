@@ -3,6 +3,7 @@
 #include "benc.h"
 #include "query.h"
 #include "log.h"
+#include "peers.h"
 
 #include <errno.h>
 #include <sys/stat.h>
@@ -22,21 +23,83 @@
 #include <stdio.h>
 #include <arpa/inet.h>
 
-#define MAX(a, b)                 \
-	 ({                           \
-		 __typeof__ (a) _a = (a); \
-		 __typeof__ (b) _b = (b); \
-		 _a > _b ? _a : _b;       \
-	 })
+#if UINT8_MAX > RAND_MAX
+#error UINT8_MAX is larger than RAND_MAX
+#endif
+uint8_t rand_byte() {
+	int limit = (RAND_MAX / UINT8_MAX)*UINT8_MAX;
+	int val;
+	while((val = rand()) >= limit);
 
-#define MIN(a, b)                 \
-	 ({                           \
-		 __typeof__ (a) _a = (a); \
-		 __typeof__ (b) _b = (b); \
-		 _a < _b ? _a : _b;       \
-	 })
+	return val % UINT8_MAX;
+}
 
-#define CLAMP(a, b, c)            \
+void token_create(struct tokens* tokens, time_t now, struct addr* remote, char* token) {
+	assert(tokens->head < TOKEN_KNUM);
+	if(difftime(now, tokens->issued[tokens->head]) >= TOKEN_ITMO) {
+		// We can no longer issue for this ticket
+		tokens->head = (tokens->head + 1) % TOKEN_KNUM;
+
+		// The ticket we are going to overwrite should be ineligible for validation
+		assert(difftime(now, tokens->issued[tokens->head]) >= TOKEN_VTMO);
+
+		tokens->issued[tokens->head] = now;
+		for(size_t i = 0; i < TOKEN_TLEN; i++) {
+			tokens->ticket[tokens->head][i] = rand_byte();
+		}
+	}
+
+	sha256_init(&tokens->ctx);
+	sha256_update(&tokens->ctx, (unsigned char*)&remote->ip, sizeof(uint32_t));
+	sha256_update(&tokens->ctx, (unsigned char*)&remote->port, sizeof(uint16_t));
+	sha256_update(&tokens->ctx, (unsigned char*)tokens->ticket[tokens->head], TOKEN_TLEN);
+	sha256_final(&tokens->ctx, (unsigned char*)token);
+}
+
+int token_validate(struct tokens* tokens, time_t now, struct addr* remote, char* token) {
+	assert(tokens->head < TOKEN_KNUM);
+	size_t i = tokens->head;
+	char buf[SHA256_BLOCK_SIZE];
+	while(true) {
+		if(difftime(now, tokens->issued[i]) >= TOKEN_VTMO) {
+			// If we are outside the validation timeout, we know that all the ones before us were too
+			break;
+		}
+
+		sha256_init(&tokens->ctx);
+		sha256_update(&tokens->ctx, (unsigned char*)&remote->ip, sizeof(uint32_t));
+		sha256_update(&tokens->ctx, (unsigned char*)&remote->port, sizeof(uint16_t));
+		sha256_update(&tokens->ctx, (unsigned char*)tokens->ticket[i], TOKEN_TLEN);
+		sha256_final(&tokens->ctx, (unsigned char*)buf);
+
+		if(memcmp(buf, token, SHA256_BLOCK_SIZE) == 0) {
+			return TOK_VALI;
+		}
+
+		i = (i + TOKEN_KNUM - 1) % TOKEN_KNUM;
+		if(i == tokens->head) {
+			// We've gone through all the tickets
+			break;
+		}
+	}
+	return TOK_INVA;
+}
+
+#define MAX(a, b)                \
+	({                           \
+		__typeof__ (a) _a = (a); \
+		__typeof__ (b) _b = (b); \
+		_a > _b ? _a : _b;       \
+	})
+
+#define MIN(a, b)                \
+	({                           \
+		__typeof__ (a) _a = (a); \
+		__typeof__ (b) _b = (b); \
+		_a < _b ? _a : _b;       \
+	})
+
+#define CLAMP(a, b, c)           \
 	MAX(MIN(a, c), b)
 
 
@@ -54,6 +117,7 @@ int sockaddr_cmp(struct sockaddr* x, struct sockaddr* y) {
 		typeof(a) cmp = a - b; \
 		if(cmp != 0) return cmp; \
 	} while(0)
+
 	if (x->sa_family == AF_INET) {
 		struct sockaddr_in *xin = (void*)x;
 		struct sockaddr_in *yin = (void*)y;
@@ -103,17 +167,6 @@ struct msgbuff {
 PROCESS_REPONSE(getclient_response);
 PROCESS_TIMEOUT(getclient_timeout);
 
-#if UINT8_MAX > RAND_MAX
-#error UINT8_MAX is larger than RAND_MAX
-#endif
-uint8_t rand_byte() {
-	int limit = (RAND_MAX / UINT8_MAX)*UINT8_MAX;
-	int val;
-	while((val = rand()) >= limit);
-
-	return val % UINT8_MAX;
-}
-
 // Number of nodeid bits
 #define IDBITS 160
 #if IDBITS > RAND_MAX
@@ -151,14 +204,6 @@ int write_find_node(char* buff, size_t* buff_len, struct nodeid* self, struct no
 	return 0;
 }
 
-struct nodeid random_node() {
-	struct nodeid target;
-	for(uint8_t *target_byte = (uint8_t*)&target; target_byte < ((uint8_t*)&target)+sizeof(target); target_byte++) {
-		*target_byte = rand_byte();
-	}
-	return target;
-}
-
 int send_ping(struct dht* dht, struct nodeid* expected, time_t now, bool node_is_new, const struct sockaddr* dest_addr, socklen_t dest_len, struct msgbuff* msgbuff) {
 	if(*msgbuff->messages >= msgbuff->messages_end)
 		return PROTO_ENOREQ;
@@ -175,6 +220,8 @@ int send_ping(struct dht* dht, struct nodeid* expected, time_t now, bool node_is
 	struct ping* data = &dht->requestdata[reqId].cont.ping;
 	if(!node_is_new) {
 		data->remote_id = *expected;
+	} else {
+		expected = &dht->self;
 	}
 	data->is_new = node_is_new;
 	data->attempt = 0;
@@ -185,7 +232,7 @@ int send_ping(struct dht* dht, struct nodeid* expected, time_t now, bool node_is
 	memcpy(&dht->requestdata[reqId].addr, dest_addr, dest_len);
 	dht->requestdata[reqId].addr_len = dest_len;
 
-	struct nodeid target = random_node();
+	struct nodeid target = rand_nodeid_in_bucket(&dht->self, expected);
 
 	message->payload_len = sizeof(message->payload);
 	int rc = write_find_node(message->payload, &message->payload_len, &dht->self, &target, reqId);
@@ -219,7 +266,13 @@ PROCESS_TIMEOUT(getclient_timeout) {
 	memcpy(&message->dest, &dht->requestdata[reqId].addr, dht->requestdata[reqId].addr_len);
 	message->dest_len = dht->requestdata[reqId].addr_len;
 
-	struct nodeid target = random_node();
+	struct nodeid *remote;
+	if(!cont->ping.is_new) {
+		 remote = &dht->requestdata[reqId].cont.ping.remote_id;
+	} else {
+		 remote = &dht->self;
+	}
+	struct nodeid target = rand_nodeid_in_bucket(&dht->self, remote);
 
 	message->payload_len = sizeof(message->payload);
 	int rc = write_find_node(message->payload, &message->payload_len, &dht->self, &target, reqId);
@@ -396,9 +449,12 @@ void proto_begin(struct dht* dht, time_t now, struct message** output, const str
 	}
 	struct sockaddr_in bindAddr = {0};
 	bindAddr.sin_family = AF_INET;
-	bindAddr.sin_port = htons(6881);
+	bindAddr.sin_port = htons(6886);
 	bindAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	bind(dht->sfd, (struct sockaddr*)&bindAddr, sizeof(struct sockaddr_in));
+	if(bind(dht->sfd, (struct sockaddr*)&bindAddr, sizeof(struct sockaddr_in)) != 0) {
+		err("Bind failed");
+		// We should bail here, but the tests need this to be unhandled
+	}
 
 	struct addrinfo hints = {0};
 	hints.ai_family = AF_INET;
@@ -467,11 +523,16 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 		dht->requestdata[reqId].timeout = 0;
 		dht->reqalloc[reqId] = false;
 	} else if(type == CT_QUERY) { // Must be a query
-		if(query == NULL)
-			fatal("No query function in query request");
+		if(query == NULL) {
+			err("No query method in request body");
+			return QUERY_EBADQ;
+		}
 		if(transaction == NULL)
 			fatal("No transaction in request");
-		assert(transaction_len <= 16);
+		if(transaction_len > 16) {
+			err("DISCARD: Transaction ID is too long");
+			return 0;
+		}
 
 		assert(strlen(query) == query_len);
 
@@ -481,26 +542,21 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 		char* end = message->payload+sizeof(message->payload);
 		char* cursor = message->payload;
 
-		int rc = snprintf(cursor, end-cursor , "d1:t%ld:", transaction_len);
-		if(rc < 0)
-			fatal("No space for response");
-		cursor += rc;
-		memcpy(cursor, transaction, transaction_len);
-		cursor += transaction_len;
-		rc = snprintf(cursor, end-cursor, "1:y1:r1:r");
+		int rc;
+
+		rc = snprintf(cursor, end-cursor , "d1:r");
 		if(rc < 0)
 			fatal("No space for response");
 		cursor += rc;
 
-		dbg("===== HANDLE %s ====", query);
-		rc = handle_request(&dht->self, query, (const struct sockaddr*)remote, remote_len, packet, packet_len, &cursor, end-cursor-1);
+		char respType = 'r';
+		rc = handle_request(&dht->self, &dht->tokens, now, query, (const struct sockaddr*)remote, remote_len, packet, packet_len, &cursor, end-cursor-1);
 		if(rc == QUERY_EUNK) {
 			dbg("Unknown method");
 			// @FRAGILE: @HACK: Static offsets to fiddle with already written
 			// out packet data. Acceptable because this is the uncommon error
 			// case.
-			// The y key should have value e
-			*(cursor-4) = 'e';
+			respType = 'e';
 			// The r key is called e for errors
 			*(cursor-1) = 'e';
 
@@ -512,26 +568,68 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 			assert(cursor < end);
 
 			// Use the normal finalize flow
+		} else if(rc == QUERY_EBADQ) {
+			dbg("Invalid query");
+			// @FRAGILE: @HACK: Static offsets to fiddle with already written
+			// out packet data. Acceptable because this is the uncommon error
+			// case.
+			respType = 'e';
+			// The r key is called e for errors
+			*(cursor-1) = 'e';
+
+			// Now create the payload
+			rc = snprintf(cursor, end-cursor, "li204e11:Bad Requeste");
+			if(rc < 0)
+				fatal("No space for response");
+			cursor += rc;
+			assert(cursor < end);
+
+			// Use the normal finalize flow
 		} else if(rc != 0) fatal("Error handling request");
 
-		rc = snprintf(cursor, end-cursor, "e");
+		rc = snprintf(cursor, end-cursor , "1:t%ld:", transaction_len);
 		if(rc < 0)
 			fatal("No space for response");
 		cursor += rc;
-		assert(cursor < end);
+		memcpy(cursor, transaction, transaction_len);
+		cursor += transaction_len;
+		rc = snprintf(cursor, end-cursor, "1:y1:%ce", respType);
+		if(rc < 0)
+			fatal("No space for response");
+		cursor += rc;
 
+		assert(cursor < end);
 		message->payload_len = cursor - message->payload;
 
 		memcpy(&message->dest, remote, remote_len);
 		message->dest_len = remote_len;
 		(*msgbuff->messages)++;
 	} else if(type == CT_ERROR) {
-		fatal("Unhandled error");
+		dbg("Unhandled error");
 	} else {
 		fatal("HOW");
 	}
 
 	return 0;
+}
+
+static void recalulate_waketime(struct dht *dht) {
+	dht->wake = 0;
+	if(!dht->pause){
+		struct entry* oldest;
+		routing_oldest(&oldest);
+		if(oldest != NULL)
+			dht->wake = oldest->expire;
+	}
+
+	for(int i = 0; i < MAX_INFLIGHT; i++) {
+		if(!dht->reqalloc[i])
+			continue;
+
+		time_t timeout = dht->requestdata[i].timeout;
+		if(dht->wake == 0 || (timeout != 0 && difftime(timeout, dht->wake) < 0))
+			dht->wake = timeout;
+	}
 }
 
 int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* remote, socklen_t remote_len, time_t now, struct message** output, const struct message* const output_end) {
@@ -554,6 +652,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 
 			if(rc == PROTO_ENOREQ) {
 				dht->pause = true;
+				recalulate_waketime(dht);
 				return 0;
 			}
 			if(rc != PROTO_EDISC) {
@@ -582,6 +681,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			int rc = send_ping(dht, &oldest->id, now, false, (const struct sockaddr*)&dest, sizeof(dest), &msgbuff);
 			if(rc == PROTO_ENOREQ) {
 				dht->pause = true;
+				recalulate_waketime(dht);
 				return 0;
 			} else if(rc != 0) {
 				fatal("NOPE %d", rc);
@@ -591,9 +691,10 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			routing_oldest(&oldest);
 		}
 
+		recalulate_waketime(dht);
 		return 0;
 	}
-	
+
 	struct bcursor bcursor;
 	struct benc_node stream[256];
 	bcur_open(&bcursor, buff, buff+recv_len, stream, 256);
@@ -654,12 +755,16 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 		}
 	}
 
+	recalulate_waketime(dht);
+
 	if(discard){
 		return 0;
 	}
 
 	int rc = handle_packet(dht, now, type, transaction_set ? transaction : NULL, transaction_len, query_set ? query : NULL, query_len, buff, recv_len, remote, remote_len, &msgbuff);
 	assert(rc == 0);
+
+	// Debug output
 
 	{
 		printf("In flight |");
@@ -699,6 +804,10 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 		}
 #undef GRAPHY
 #undef LFACLEN
+	}
+
+	{
+		printf("%ld peers in %ld hashes\n", peer_status.peers, peer_status.hashes);
 	}
 
 	return 0;

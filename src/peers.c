@@ -6,11 +6,14 @@
 #include <string.h>
 #include <assert.h>
 
+struct peer_status peer_status;
 struct peer_entry* peer_table;
 size_t peer_table_size;
 size_t peer_table_load;
 
 int allocate_hashtable() {
+	memset(&peer_status, 0, sizeof(struct peer_status));
+
 	peer_table_load = 0;
 	peer_table_size = 16;
 	peer_table = calloc(peer_table_size, sizeof(struct peer_entry));
@@ -83,6 +86,7 @@ int add_peer(struct infohash* infohash, struct addr* peer) {
 		entry->set = true;
 		entry->key = *infohash;
 		peer_table_load++;
+		peer_status.hashes++;
 	}
 
 	size_t peern = entry->value_len;
@@ -91,6 +95,7 @@ int add_peer(struct infohash* infohash, struct addr* peer) {
 	assert(peern < PEERS_PER_HASH);
 	entry->value[peern] = *peer;
 	entry->value_len++;
+	peer_status.peers++;
 
 	return 0;
 }

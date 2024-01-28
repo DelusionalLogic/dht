@@ -46,3 +46,6 @@ void routing_status(int* filled, int* size, double* load_factor, size_t load_fac
 
 struct entry* routing_get(struct nodeid* id);
 void routing_remove(struct nodeid* self);
+
+struct nodeid rand_nodeid_in_bucket(struct nodeid *self, struct nodeid *other);
+uint8_t prefix(struct nodeid* a, struct nodeid* b);

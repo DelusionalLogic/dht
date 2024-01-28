@@ -33,6 +33,7 @@
 //  <----------Detail---------->
 //
 
+#include <arpa/inet.h>
 struct table {
 	struct nodeid myID;
 	struct entry table[RT_SIZE];
@@ -51,21 +52,21 @@ void routing_flush() {
 }
 
 // Calculate the common bit prefix between two node ids.
-static uint8_t prefix(struct nodeid* a, struct nodeid* b) {
+uint8_t prefix(struct nodeid* a, struct nodeid* b) {
 	uint8_t c = 0;
 	for(uint8_t i = 0; i < 5; i++) {
-          // Since the nodeids are stored in host byteorder in the words we have
-          // to make sure they're big endian before doing the prefix match,
-          // otherwise we end up with prefix matching that's different from the
-          // rest of the network
-          uint32_t word = htonl(a->inner[i]) ^ htonl(b->inner[i]);
+		// Since the nodeids are stored in host byteorder in the words we have
+		// to make sure they're big endian before doing the prefix match,
+		// otherwise we end up with prefix matching that's different from the
+		// rest of the network
+		uint32_t word = htonl(a->inner[i]) ^ htonl(b->inner[i]);
 
-          // This word is different, find the location of the difference
-          if (word != 0)
-            return c + __builtin_clz(word);
+		// This word is different, find the location of the difference
+		if (word != 0)
+			return c + __builtin_clz(word);
 
-          // This word is completely the same
-          c += sizeof(word) * CHAR_BIT;
+		// This word is completely the same
+		c += sizeof(word) * CHAR_BIT;
 	}
 
 	return c;
@@ -111,6 +112,36 @@ struct entry* routing_get(struct nodeid* id) {
 	}
 
 	return NULL;
+}
+
+#if UINT8_MAX > RAND_MAX
+#error UINT8_MAX is larger than RAND_MAX
+#endif
+static uint8_t rand_byte() {
+	int limit = (RAND_MAX / UINT8_MAX)*UINT8_MAX;
+	int val;
+	while((val = rand()) >= limit);
+
+	return val % UINT8_MAX;
+}
+
+struct nodeid rand_nodeid_in_bucket(struct nodeid *self, struct nodeid *other) {
+	struct nodeid target;
+	for(uint8_t *target_byte = (uint8_t*)&target; target_byte < ((uint8_t*)&target)+sizeof(target); target_byte++) {
+		*target_byte = rand_byte();
+	}
+
+	uint8_t bucket = prefix(self, other);
+	uint8_t byte = bucket / 8;
+	uint8_t residual = bucket % 8;
+
+	for(size_t i = 0; i < byte; i++) {
+		target.inner_b[i] = self->inner_b[i];
+	}
+	uint8_t mask = 0xFF >> residual;
+	target.inner_b[byte] = (target.inner_b[byte] & mask) | (self->inner_b[byte] & ~mask);
+
+	return target;
 }
 
 void routing_remove(struct nodeid* id) {

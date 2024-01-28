@@ -20,6 +20,11 @@ struct peer_entry {
 	bool set;
 };
 
+extern struct peer_status {
+	size_t peers;
+	size_t hashes;
+} peer_status;
+
 extern struct peer_entry* peer_table;
 extern size_t peer_table_size;
 extern size_t peer_table_load;

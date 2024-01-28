@@ -1,16 +1,36 @@
 #pragma once 
 
 #include "routing.h"
+#include "sha256.h"
 #include <sys/socket.h>
 #include <arpa/inet.h>
+
+#define TOKEN_ITMO 20
+#define TOKEN_VTMO 60
+#define TOKEN_TLEN 32
+#define TOKEN_KNUM (TOKEN_VTMO/TOKEN_ITMO)
+
+#define TOK_VALI 1
+#define TOK_INVA 0
+
+struct tokens {
+	SHA256_CTX ctx;
+
+	char ticket[TOKEN_KNUM][TOKEN_TLEN];
+	time_t issued[TOKEN_KNUM];
+	size_t head;
+};
+
+void token_create(struct tokens* tokens, time_t now, struct addr* remote, char* token);
+int token_validate(struct tokens* tokens, time_t now, struct addr* remote, char* token);
 
 // 192.0.2.0
 #define UNDEF_ADDR (struct in_addr){0xC0000200}
 #define MAX_DISC 32
-#define MAX_INFLIGHT 32
+#define MAX_INFLIGHT 128
 
-#define PROTO_UNCTM 60
-#define PROTO_TMOUT 5
+#define PROTO_UNCTM 60*5
+#define PROTO_TMOUT 30
 
 struct ping {
 	struct nodeid remote_id;
@@ -46,24 +66,13 @@ struct dht {
 		tmout* timeout_fun;
 		union message_cont cont;
 	} requestdata[MAX_INFLIGHT];
+
+	time_t wake;
+	struct tokens tokens;
 };
 
-// @HACK: This isn't true anymore
-// The longest message we can send is probably a response to find_node which
-// consists of:
-//   d1:t         <--   4 bytes
-//   <tid length> <--   2 bytes
-//   :            <--   1 byte
-//   <tid>        <--  16 bytes*
-//   1:y1:r1:r    <--   9 bytes
-//   d2:id20:     <--   8 bytes
-//   <our nodeid> <--  20 bytes
-//   5:nodes208:  <--  11 bytes
-//   <payload>    <-- 208 bytes
-//   ee            <--  2 bytes
-//   TOTAL            281 bytes
 struct message {
-	char payload[281];
+	char payload[1024];
 	size_t payload_len;
 	struct sockaddr_storage dest;
 	socklen_t dest_len;

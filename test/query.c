@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include "proto.h"
 #include "query.h"
 
 #include <string.h>
@@ -8,7 +9,8 @@
 #define IP(a, b, c, d) htonl(a << 24 | b << 16 | c << 8 | d)
 
 void test_malformed_empty() {
-
+	time_t now = 120;
+	struct tokens tokens = {0};
 	struct sockaddr_in src = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = IP(255, 0, 0, 1),
@@ -23,13 +25,14 @@ void test_malformed_empty() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
 
 void test_malformed_only_dict_start() {
-
+	time_t now = 120;
+	struct tokens tokens = {0};
 	struct sockaddr_in src = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = IP(255, 0, 0, 1),
@@ -44,13 +47,14 @@ void test_malformed_only_dict_start() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
 
 void test_malformed_empty_args_key() {
-
+	time_t now = 120;
+	struct tokens tokens = {0};
 	struct sockaddr_in src = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = IP(255, 0, 0, 1),
@@ -65,13 +69,14 @@ void test_malformed_empty_args_key() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
 
 void test_malformed_wrong_args_type() {
-
+	time_t now = 120;
+	struct tokens tokens = {0};
 	struct sockaddr_in src = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = IP(255, 0, 0, 1),
@@ -86,13 +91,14 @@ void test_malformed_wrong_args_type() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
 
 void test_malformed_empty_args() {
-
+	time_t now = 120;
+	struct tokens tokens = {0};
 	struct sockaddr_in src = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = IP(255, 0, 0, 1),
@@ -107,13 +113,14 @@ void test_malformed_empty_args() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
 
 void test_malformed_wrong_id_arg_type() {
-
+	time_t now = 120;
+	struct tokens tokens = {0};
 	struct sockaddr_in src = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = IP(255, 0, 0, 1),
@@ -128,13 +135,14 @@ void test_malformed_wrong_id_arg_type() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
 
 void test_malformed_wrong_id_length() {
-
+	time_t now = 120;
+	struct tokens tokens = {0};
 	struct sockaddr_in src = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = IP(255, 0, 0, 1),
@@ -149,13 +157,14 @@ void test_malformed_wrong_id_length() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
 
 void test_ping() {
-
+	time_t now = 120;
+	struct tokens tokens = {0};
 	struct sockaddr_in src = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = IP(255, 0, 0, 1),
@@ -170,7 +179,7 @@ void test_ping() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(0, rc);
 	TEST_ASSERT_EQUAL(29, response_cursor - response);
@@ -178,7 +187,8 @@ void test_ping() {
 }
 
 void test_bad_method() {
-
+	time_t now = 120;
+	struct tokens tokens = {0};
 	struct sockaddr_in src = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = IP(255, 0, 0, 1),
@@ -193,7 +203,7 @@ void test_bad_method() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, "someWrongMethod", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	int rc = handle_request(&self, &tokens, now, "someWrongMethod", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EUNK, rc);
 }
