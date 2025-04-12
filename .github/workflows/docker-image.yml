@@ -1,0 +1,22 @@
+name: Docker Image CI
+
+on:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag ghcr.io/delusionallogic/dht:${{ github.run_number }}
+      
+    - name: Tag as latest
+      run: docker tag ghcr.io/delusionallogic/dht:${{ github.run_number }}  ghcr.io/delusionallogic/dht:latest
+    
+    - name: Push the image
+      run: >
+        docker push ghcr.io/delusionallogic/dht:${{ github.run_number }}
+        docker push ghcr.io/delusionallogic/dht:latest
