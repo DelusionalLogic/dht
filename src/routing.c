@@ -249,6 +249,7 @@ void routing_oldest(struct entry** dest) {
 
 	for(struct entry* entry = pTable->table; entry < pTable->table+RT_SIZE; entry++){
 		if(!entry->set)
+			continue;
 
 		if(entry->expire == 0)
 			continue;
