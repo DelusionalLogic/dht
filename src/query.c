@@ -10,6 +10,10 @@
 #include <arpa/inet.h>
 
 int handle_request(struct nodeid* self, struct tokens *tokens, time_t now, const char* method, const struct sockaddr* src, socklen_t src_len, const char* packet, size_t packet_len, char** response, size_t response_len) {
+	if(method == NULL) {
+		return QUERY_EBADQ;
+	}
+
 	if(strcmp(method, "ping") == 0) {
 		struct bcursor bcursor;
 		struct benc_node stream[256];
@@ -59,6 +63,8 @@ int handle_request(struct nodeid* self, struct tokens *tokens, time_t now, const
 					// Skip the value
 					bcur_next(&bcursor, 1);
 					break;
+				case -BENC_EBADP:
+					fatal("Bad dict");
 			}
 		}
 
@@ -128,6 +134,8 @@ int handle_request(struct nodeid* self, struct tokens *tokens, time_t now, const
 					// Skip the value
 					bcur_next(&bcursor, 1);
 					break;
+				case -BENC_EBADP:
+					fatal("Bad dict");
 			}
 		}
 
@@ -224,6 +232,8 @@ int handle_request(struct nodeid* self, struct tokens *tokens, time_t now, const
 					// Skip the value
 					bcur_next(&bcursor, 1);
 					break;
+				case -BENC_EBADP:
+					fatal("Bad dict");
 			}
 		}
 
@@ -432,6 +442,8 @@ int handle_request(struct nodeid* self, struct tokens *tokens, time_t now, const
 
 					bcur_next(&bcursor, 1);
 					break;
+				case -BENC_EBADP:
+					fatal("Bad dict");
 			}
 		}
 
@@ -455,7 +467,7 @@ int handle_request(struct nodeid* self, struct tokens *tokens, time_t now, const
 			if(!implied_port) {
 				src_addr.port = htons(port);
 			}
-			int rc = add_peer(&infohash, &src_addr);
+			int rc = add_peer(&infohash, &src_addr, now);
 			if(rc == PEER_EFULL) {
 			} else if(rc != 0) {
 				fatal("Could not add peer (%d)", rc);

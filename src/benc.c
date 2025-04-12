@@ -178,14 +178,14 @@ int64_t benc_decode(const char** cursor, const char* end, int* depth, struct ben
 
 int bcur_fill(struct bcursor* cursor, size_t ignoring) {
 	if(cursor->source == cursor->source_end) {
-		return EOF;
+		return BENC_EBADP;
 	}
 
 	int read;
 	while(true) {
 		read = benc_decode(&cursor->source, cursor->source_end, &cursor->source_depth, cursor->base, cursor->base_len);
 		if(read < 0) {
-			return EINVAL;
+			return BENC_EBADP;
 		}
 		if(read > ignoring) {
 			break;
@@ -229,7 +229,7 @@ int bcur_next_sibling(struct bcursor* cursor) {
 		cursor->readhead++;
 		while(cursor->readhead->type != BNT_END || cursor->readhead->depth != tdepth) {
 			if(bcur_next(cursor, 1) != 0) {
-				fatal("Invalid dict/list");
+				return BENC_EBADP;
 			}
 		}
 	}
@@ -247,7 +247,7 @@ ssize_t bcur_find_key(struct bcursor* cursor, const enum benc_nodetype* keyTypes
 		if(cursor->readhead->type == BNT_LIST || cursor->readhead->type == BNT_DICT) {
 			rc = bcur_next_sibling(cursor);
 			if(rc != 0) {
-				fatal("Invalid dict");
+				return -rc;
 			}
 		} else {
 			// Check if the key one of the ones we are looking for
@@ -261,25 +261,25 @@ ssize_t bcur_find_key(struct bcursor* cursor, const enum benc_nodetype* keyTypes
 		// Skip the key part
 		rc = bcur_next(cursor, 1);
 		if(rc != 0) {
-			fatal("Invalid dict");
+			return -rc;
 		}
 
 		if(cursor->readhead->type == BNT_LIST || cursor->readhead->type == BNT_DICT) {
 			// Skip a multitoken element
 			rc = bcur_next_sibling(cursor);
 			if(rc != 0) {
-				fatal("Invalid dict");
+				return -rc;
 			}
 		} else {
 			// Skip a single token element
 			rc = bcur_next(cursor, 1);
 			if(rc != 0) {
-				fatal("Invalid dict");
+				return -rc;
 			}
 		}
 
 		if(cursor->readhead->type == BNT_END) {
-			return -1;
+			return -BENC_EENDP;
 		}
 	}
 }

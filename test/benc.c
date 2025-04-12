@@ -262,7 +262,7 @@ void test_key_not_found() {
 
 	ssize_t found = bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"a"}, (const size_t[]){1}, 1);
 
-	TEST_ASSERT_EQUAL(-1, found);
+	TEST_ASSERT_EQUAL(-BENC_EENDP, found);
 	TEST_ASSERT_EQUAL_PTR(stream+3, bcursor.readhead);
 }
 
@@ -351,7 +351,7 @@ void test_stop_at_end() {
 
 	ssize_t found = bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"x"}, (const size_t[]){1}, 1);
 
-	TEST_ASSERT_EQUAL_MESSAGE(-1, found, "Found something");
+	TEST_ASSERT_EQUAL_MESSAGE(-BENC_EENDP, found, "Found something");
 	TEST_ASSERT_EQUAL_PTR_MESSAGE(stream+4, bcursor.readhead, "Didn't stop at dict end");
 }
 

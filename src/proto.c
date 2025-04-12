@@ -3,6 +3,7 @@
 #include "benc.h"
 #include "query.h"
 #include "log.h"
+#include "metrics.h"
 #include "peers.h"
 
 #include <errno.h>
@@ -244,6 +245,46 @@ int send_ping(struct dht* dht, struct nodeid* expected, time_t now, bool node_is
 	return 0;
 }
 
+int send_announce(struct dht* dht, struct nodeid* expected, time_t now, bool node_is_new, const struct sockaddr* dest_addr, socklen_t dest_len, struct msgbuff* msgbuff) {
+	if(*msgbuff->messages >= msgbuff->messages_end)
+		return PROTO_ENOREQ;
+	struct message* message = *msgbuff->messages;
+
+	uint16_t reqId;
+	if(!alloc_req(dht, &reqId)) {
+		return PROTO_ENOREQ;
+	}
+
+	memcpy(&message->dest, dest_addr, dest_len);
+	message->dest_len = dest_len;
+
+	struct ping* data = &dht->requestdata[reqId].cont.ping;
+	if(!node_is_new) {
+		data->remote_id = *expected;
+	} else {
+		expected = &dht->self;
+	}
+	data->is_new = node_is_new;
+	data->attempt = 0;
+
+	dht->requestdata[reqId].fun = &getclient_response;
+	dht->requestdata[reqId].timeout = now + PROTO_TMOUT;
+	dht->requestdata[reqId].timeout_fun = &getclient_timeout;
+	memcpy(&dht->requestdata[reqId].addr, dest_addr, dest_len);
+	dht->requestdata[reqId].addr_len = dest_len;
+
+	struct nodeid target = rand_nodeid_in_bucket(&dht->self, expected);
+
+	message->payload_len = sizeof(message->payload);
+	int rc = write_find_node(message->payload, &message->payload_len, &dht->self, &target, reqId);
+	if(rc != 0) {
+		return rc;
+	}
+	(*msgbuff->messages)++;
+
+	return 0;
+}
+
 PROCESS_TIMEOUT(getclient_timeout) {
 	// @HACK: This really sucks. maybe we should just pass in the request id
 	size_t reqId = (typeof(dht->requestdata[0])*)((void*)cont - offsetof(typeof(dht->requestdata[0]), cont)) - dht->requestdata;
@@ -268,9 +309,9 @@ PROCESS_TIMEOUT(getclient_timeout) {
 
 	struct nodeid *remote;
 	if(!cont->ping.is_new) {
-		 remote = &dht->requestdata[reqId].cont.ping.remote_id;
+		remote = &dht->requestdata[reqId].cont.ping.remote_id;
 	} else {
-		 remote = &dht->self;
+		remote = &dht->self;
 	}
 	struct nodeid target = rand_nodeid_in_bucket(&dht->self, remote);
 
@@ -366,6 +407,8 @@ PROCESS_REPONSE(getclient_response) {
 					// Skip the value
 					bcur_next(&bcursor, 1);
 					break;
+				case -BENC_EBADP:
+					fatal("Bad dict");
 			}
 		}
 
@@ -386,6 +429,7 @@ PROCESS_REPONSE(getclient_response) {
 		} else {
 			dbg("We are no longer interested");
 		}
+
 	} else {
 		struct entry* entry = routing_get(&id);
 		// @CLEANUP: Figure out why this can be null. Is the node getting
@@ -424,6 +468,7 @@ PROCESS_REPONSE(getclient_response) {
 }
 
 enum commandType {
+	CT_UNK,
 	CT_QUERY,
 	CT_RESPONSE,
 	CT_ERROR,
@@ -523,18 +568,13 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 		dht->requestdata[reqId].timeout = 0;
 		dht->reqalloc[reqId] = false;
 	} else if(type == CT_QUERY) { // Must be a query
-		if(query == NULL) {
-			err("No query method in request body");
-			return QUERY_EBADQ;
-		}
 		if(transaction == NULL)
 			fatal("No transaction in request");
 		if(transaction_len > 16) {
+			prom_counter_inc(queries, (const char *[]){"discard"});
 			err("DISCARD: Transaction ID is too long");
 			return 0;
 		}
-
-		assert(strlen(query) == query_len);
 
 		assert(*msgbuff->messages < msgbuff->messages_end);
 		struct message* message = *msgbuff->messages;
@@ -552,7 +592,7 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 		char respType = 'r';
 		rc = handle_request(&dht->self, &dht->tokens, now, query, (const struct sockaddr*)remote, remote_len, packet, packet_len, &cursor, end-cursor-1);
 		if(rc == QUERY_EUNK) {
-			dbg("Unknown method");
+			prom_counter_inc(queries, (const char *[]){"unknown"});
 			// @FRAGILE: @HACK: Static offsets to fiddle with already written
 			// out packet data. Acceptable because this is the uncommon error
 			// case.
@@ -569,7 +609,7 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 
 			// Use the normal finalize flow
 		} else if(rc == QUERY_EBADQ) {
-			dbg("Invalid query");
+			prom_counter_inc(queries, (const char *[]){"badquery"});
 			// @FRAGILE: @HACK: Static offsets to fiddle with already written
 			// out packet data. Acceptable because this is the uncommon error
 			// case.
@@ -585,7 +625,8 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 			assert(cursor < end);
 
 			// Use the normal finalize flow
-		} else if(rc != 0) fatal("Error handling request");
+		} else if(rc == 0) prom_counter_inc(queries, (const char *[]){"ok"});
+		else fatal("Error handling request");
 
 		rc = snprintf(cursor, end-cursor , "1:t%ld:", transaction_len);
 		if(rc < 0)
@@ -607,7 +648,7 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 	} else if(type == CT_ERROR) {
 		dbg("Unhandled error");
 	} else {
-		fatal("HOW");
+		dbg("Unknown request type");
 	}
 
 	return 0;
@@ -648,6 +689,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			if(difftime(now, dht->requestdata[i].timeout) < 0)
 				continue;
 
+			prom_counter_inc(retries, NULL);
 			int rc = dht->requestdata[i].timeout_fun(dht, &dht->self, now, &dht->requestdata[i].cont, &msgbuff);
 
 			if(rc == PROTO_ENOREQ) {
@@ -691,6 +733,11 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			routing_oldest(&oldest);
 		}
 
+		// @HACK 0 means unitialized, only happens in tests
+		if(peer_table_size != 0) {
+			expire_hashes(now);
+		}
+
 		recalulate_waketime(dht);
 		return 0;
 	}
@@ -704,8 +751,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 	}
 	bcur_next(&bcursor, 1);
 
-	bool discard = false;
-	enum commandType type;
+	enum commandType type = CT_UNK;
 	bool transaction_set = false;
 	char transaction[64];
 	size_t transaction_len;
@@ -751,15 +797,14 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 				memcpy(query, bcursor.readhead->loc, query_len);
 				query[query_len] = '\0';
 				bcur_next(&bcursor, 1);
+				break;
 			}
+			case -BENC_EBADP:
+				fatal("Bad dict");
 		}
 	}
 
 	recalulate_waketime(dht);
-
-	if(discard){
-		return 0;
-	}
 
 	int rc = handle_packet(dht, now, type, transaction_set ? transaction : NULL, transaction_len, query_set ? query : NULL, query_len, buff, recv_len, remote, remote_len, &msgbuff);
 	assert(rc == 0);
@@ -768,14 +813,17 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 
 	{
 		printf("In flight |");
+		uint16_t inflight = 0;
 		for(int i = 0; i < MAX_INFLIGHT; i++) {
 			if(dht->reqalloc[i]) {
 				printf("#");
+				inflight++;
 			} else {
 				printf(" ");
 			}
 		}
 		printf("|\n");
+		prom_gauge_set(requestsInFlight, inflight, NULL);
 	}
 	{
 		int filled;
@@ -783,6 +831,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 #define LFACLEN 64
 		double load_factor[LFACLEN] = {0};
 		routing_status(&filled, &total, load_factor, LFACLEN);
+		prom_gauge_set(activeNodes, filled, NULL);
 		dbg("%d/%d nodes in routing table", filled, total);
 
 #define GRAPHY 5
@@ -804,10 +853,6 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 		}
 #undef GRAPHY
 #undef LFACLEN
-	}
-
-	{
-		printf("%ld peers in %ld hashes\n", peer_status.peers, peer_status.hashes);
 	}
 
 	return 0;

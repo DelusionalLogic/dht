@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #define BENC_EBADP 1
+#define BENC_EENDP 2
 
 enum benc_nodetype {
 	BNT_INT,

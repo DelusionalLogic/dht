@@ -5,7 +5,7 @@ TSTDIR ?= test
 GENDIR ?= gen
 OBJDIR ?= obj
 
-LIBS = -lm
+LIBS = -lm -lmicrohttpd -lprom
 INCS = -Isrc/ -Igen/ -I. -Ithirdparty/crypto-algorithms/
 
 CFLAGS ?= -O3 -D_FORTIFY_SOURCE=2 -Wall -g

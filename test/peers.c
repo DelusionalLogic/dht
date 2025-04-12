@@ -13,7 +13,7 @@ void test_add_single_peer() {
 	struct infohash sometorrent = {.inner={0x0034048f, 0x08000020, 0x00888880, 0x02008460, 0x0ab00521}};
 	struct addr addr = (struct addr){.ip = IP(128,0,0,1), .port = 0};
 
-	int rc = add_peer(&sometorrent, &addr);
+	int rc = add_peer(&sometorrent, &addr, 0);
 	TEST_ASSERT_EQUAL(0, rc);
 }
 
@@ -23,24 +23,24 @@ void test_add_9_peers_same_torrent() {
 	struct infohash sometorrent = {.inner={0x0034048f, 0x08000020, 0x00888880, 0x02008460, 0x0ab00521}};
 	struct addr addr = (struct addr){.ip = IP(128,0,0,1), .port = 0};
 
-	int rc = add_peer(&sometorrent, &addr);
+	int rc = add_peer(&sometorrent, &addr, 0);
 	TEST_ASSERT_EQUAL(0, rc);
-	rc = add_peer(&sometorrent, &addr);
+	rc = add_peer(&sometorrent, &addr, 0);
 	TEST_ASSERT_EQUAL(0, rc);
-	rc = add_peer(&sometorrent, &addr);
+	rc = add_peer(&sometorrent, &addr, 0);
 	TEST_ASSERT_EQUAL(0, rc);
-	rc = add_peer(&sometorrent, &addr);
+	rc = add_peer(&sometorrent, &addr, 0);
 	TEST_ASSERT_EQUAL(0, rc);
-	rc = add_peer(&sometorrent, &addr);
+	rc = add_peer(&sometorrent, &addr, 0);
 	TEST_ASSERT_EQUAL(0, rc);
-	rc = add_peer(&sometorrent, &addr);
+	rc = add_peer(&sometorrent, &addr, 0);
 	TEST_ASSERT_EQUAL(0, rc);
-	rc = add_peer(&sometorrent, &addr);
+	rc = add_peer(&sometorrent, &addr, 0);
 	TEST_ASSERT_EQUAL(0, rc);
-	rc = add_peer(&sometorrent, &addr);
+	rc = add_peer(&sometorrent, &addr, 0);
 	TEST_ASSERT_EQUAL(0, rc);
 	// There's room for 8 peers per infohash
-	rc = add_peer(&sometorrent, &addr);
+	rc = add_peer(&sometorrent, &addr, 0);
 	TEST_ASSERT_EQUAL(PEER_EFULL, rc);
 }
 
@@ -52,9 +52,9 @@ void test_peers_for_only_torrent() {
 	struct addr someaddr = (struct addr){.ip = IP(128,0,0,1), .port = 0};
 	struct addr otheraddr = (struct addr){.ip = IP(128,0,0,1), .port = 1};
 
-	int rc = add_peer(&sometorrent, &someaddr);
+	int rc = add_peer(&sometorrent, &someaddr, 0);
 	TEST_ASSERT_EQUAL(0, rc);
-	rc = add_peer(&othertorrent, &otheraddr);
+	rc = add_peer(&othertorrent, &otheraddr, 0);
 	TEST_ASSERT_EQUAL(0, rc);
 
 	struct addr* found;
@@ -88,7 +88,7 @@ void test_grows() {
 
 	for(int i = 0; i < 17; i++) { // Peer table size + 1 to make sure it HAS to grow
 		struct infohash sometorrent = {.inner={0x0034048f, 0x08000020, 0x00888880, 0x02008460, i}};
-		int rc = add_peer(&sometorrent, &addr);
+		int rc = add_peer(&sometorrent, &addr, 0);
 		TEST_ASSERT_EQUAL(0, rc);
 	}
 
@@ -100,5 +100,40 @@ void test_grows() {
 		get_peers(&sometorrent, &found, &found_len);
 		TEST_ASSERT_NOT_NULL(found);
 		TEST_ASSERT_EQUAL(1, found_len);
+	}
+}
+
+void test_expired() {
+	allocate_hashtable();
+
+	struct infohash sometorrent = {.inner={0x0034048f, 0x08000020, 0x00888880, 0x02008460, 0x0ab00521}};
+	struct infohash other = {.inner={0x0034048f, 0x08000020, 0x00888880, 0x02008470, 0x0ab00521}};
+	struct addr addr = (struct addr){.ip = IP(128,0,0,1), .port = 0};
+	struct addr other_addr = (struct addr){.ip = IP(128,0,0,1), .port = 1};
+
+	int rc = add_peer(&sometorrent, &addr, 0);
+	TEST_ASSERT_EQUAL(0, rc);
+	rc = add_peer(&other, &addr, 0);
+	TEST_ASSERT_EQUAL(0, rc);
+
+	rc = add_peer(&other, &other_addr, 1);
+	TEST_ASSERT_EQUAL(0, rc);
+
+	expire_hashes(HASH_TIMEOUT + 1);
+
+	{
+		struct addr* found;
+		size_t found_len;
+		get_peers(&sometorrent, &found, &found_len);
+		TEST_ASSERT_NULL(found);
+		TEST_ASSERT_EQUAL(0, found_len);
+	}
+
+	{
+		struct addr* found;
+		size_t found_len;
+		get_peers(&other, &found, &found_len);
+		TEST_ASSERT_NOT_NULL(found);
+		TEST_ASSERT_EQUAL(2, found_len);
 	}
 }

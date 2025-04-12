@@ -1,6 +1,7 @@
 #include "routing.h"
 
 #include "log.h"
+#include "metrics.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -148,6 +149,7 @@ void routing_remove(struct nodeid* id) {
 	struct entry* entry = routing_get(id);
 
 	entry->set = false;
+	entry->expire = 0;
 }
 
 bool routing_interested(struct nodeid* id) {
@@ -156,6 +158,7 @@ bool routing_interested(struct nodeid* id) {
 	if(bucketIndex == RT_IDBITS) {
 		return false;
 	}
+	prom_histogram_observe(offered, bucketIndex, NULL);
 
 	uint16_t baseIndex = base_bucket(id);
 	int8_t inBucketIndex = scan(baseIndex, id);
@@ -246,7 +249,6 @@ void routing_oldest(struct entry** dest) {
 
 	for(struct entry* entry = pTable->table; entry < pTable->table+RT_SIZE; entry++){
 		if(!entry->set)
-			continue;
 
 		if(entry->expire == 0)
 			continue;

@@ -72,6 +72,8 @@ void test_begin_pings_bootstrap_node() {
 	TEST_ASSERT_EQUAL(91, outbuff[0].payload_len);
 	TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:", outbuff[0].payload, 43);
 	TEST_ASSERT_EQUAL_CHAR_ARRAY("e1:q9:find_node1:t1:01:y1:qe", outbuff[0].payload+63, 28);
+
+	proto_end(&dht);
 }
 
 void test_response_from_initial_probe() {
@@ -112,6 +114,8 @@ void test_response_from_initial_probe() {
 	TEST_ASSERT_EQUAL(((struct sockaddr_in*)&remote)->sin_addr.s_addr, entry->addr.ip);
 	TEST_ASSERT_EQUAL(((struct sockaddr_in*)&remote)->sin_port, entry->addr.port);
 	TEST_ASSERT_EQUAL(PROTO_UNCTM+10, entry->expire);
+
+	proto_end(&dht);
 }
 
 void test_reponse_from_wrong_ip() {
@@ -145,6 +149,8 @@ void test_reponse_from_wrong_ip() {
 	struct nodeid other = (struct nodeid){.inner={0x61616161, 0x61616161, 0x61616161, 0x61616161, 0x61616161}};
 	struct entry* entry = routing_get(&other);
 	TEST_ASSERT_NULL(entry);
+
+	proto_end(&dht);
 }
 
 void test_ping() {
@@ -172,6 +178,8 @@ void test_ping() {
 
 	TEST_ASSERT_EQUAL(47, outbuff[0].payload_len);
 	TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:rd2:id20:BBBBBBBBBBBBBBBBBBBBe1:t2:aa1:y1:re", outbuff[0].payload, 47);
+
+	proto_end(&dht);
 }
 
 void test_unknown_method() {
@@ -199,6 +207,8 @@ void test_unknown_method() {
 
 	TEST_ASSERT_EQUAL(42, outbuff[0].payload_len);
 	TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:eli204e14:Unknown Methode1:t2:aa1:y1:ee", outbuff[0].payload, 42);
+
+	proto_end(&dht);
 }
 
 void test_note_times_out() {
@@ -239,6 +249,8 @@ void test_note_times_out() {
 	TEST_ASSERT_GREATER_THAN(19, prefix(&dht.self, &target));
 
 	TEST_ASSERT_EQUAL_CHAR_ARRAY("e1:q9:find_node1:t1:01:y1:qe", outbuff[1].payload+63, 28);
+
+	proto_end(&dht);
 }
 
 void test_response_after_retry() {
@@ -266,6 +278,8 @@ void test_response_after_retry() {
 	TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&dht.self, &target, sizeof(struct nodeid), "Target should be our own id");
 
 	TEST_ASSERT_EQUAL_CHAR_ARRAY("e1:q9:find_node1:t1:01:y1:qe", outbuff[0].payload+63, 28);
+
+	proto_end(&dht);
 }
 
 void test_remove_from_routing_after_3_retries() {
@@ -330,6 +344,8 @@ void test_remove_from_routing_after_3_retries() {
 	TEST_ASSERT_EQUAL_PTR_MESSAGE(message_cursor, outbuff, "The timeout should send not a message");
 	entry = routing_get(&other);
 	TEST_ASSERT_NULL(entry);
+
+	proto_end(&dht);
 }
 
 void test_ping_node_when_uncertain() {
@@ -387,6 +403,8 @@ void test_ping_node_when_uncertain() {
 		TEST_ASSERT_NOT_NULL(entry);
 		TEST_ASSERT_GREATER_THAN(now, entry->expire);
 	}
+
+	proto_end(&dht);
 }
 
 void test_query_find_node() {
@@ -438,6 +456,8 @@ void test_query_find_node() {
 		TEST_ASSERT_EQUAL_MEMORY(&((struct sockaddr_in*)&remote)->sin_port, outbuff[0].payload+66, 2);
 		TEST_ASSERT_EQUAL_CHAR_ARRAY("e1:t2:aa1:y1:re", outbuff[0].payload+68, 15);
 	}
+
+	proto_end(&dht);
 }
 
 void test_query_get_peers_have_one() {
@@ -513,7 +533,6 @@ void test_query_get_peers_have_one() {
 		// Node announces that it's a peer for that torrent
 		char buff[] = "d1:ad2:id20:abcdefghij012345678912:implied_porti1e9:info_hash20:aaaaaaaaaaaaaaaaaaaa4:porti1337e5:token32:                                e1:q13:announce_peer1:t2:aa1:y1:qe";
 		memcpy(buff+106, token, SHA256_BLOCK_SIZE);
-		dbg("PKT %s", buff);
 		struct message* message_cursor = outbuff;
 		proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&other, sizeof(other), now, &message_cursor, outbuff+2);
 		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
@@ -548,4 +567,126 @@ void test_query_get_peers_have_one() {
 		TEST_ASSERT_EQUAL_CHAR_ARRAY("6:valuesl6:\x80\x00\x00\x01\x23\x82""ee1:t2:aa1:y1:re", cursor, 33);
 		cursor+=33;
 	}
+
+	proto_end(&dht);
+}
+
+void test_node_closer_to_infohash_is_discovered() {
+	struct message outbuff[10] = {0};
+	time_t now = 0;
+
+	struct sockaddr_storage remote;
+	socklen_t remote_len;
+
+	allocate_hashtable();
+
+	struct dht dht;
+	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	routing_init(&dht.self);
+	struct nodeid other = (struct nodeid){.inner={0x30303030, 0x30303030, 0x30303030, 0x30303030, 0x3030303}};
+
+	{
+		struct message* message_cursor = outbuff;
+		proto_begin(&dht, 0, &message_cursor, outbuff+2);
+		remote_len = outbuff[0].dest_len;
+		memcpy(&remote, &outbuff[0].dest, remote_len);
+	}
+	now += 10;
+
+	// Some other then asks for peers
+	char token[SHA256_BLOCK_SIZE];
+	{
+		struct sockaddr_in other;
+		other.sin_family = AF_INET;
+		inet_pton(AF_INET, "128.0.0.1", &other.sin_addr.s_addr);
+		other.sin_port = htons(3);
+
+		// Node asks for peers to get token
+		char buff[] = "d1:ad2:id20:000000000000000000009:info_hash20:00000000000000000002e1:q9:get_peers1:t2:aa1:y1:qe";
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, buff, sizeof(buff), &other, sizeof(other), 0, &message_cursor, outbuff+2);
+
+		// We should have sent a response
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
+
+		TEST_ASSERT_EQUAL(98, outbuff[0].payload_len);
+		char* cursor = outbuff[0].payload;
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:rd2:id20:BBBBBBBBBBBBBBBBBBBB5:nodes0:", cursor, 41);
+		cursor+=41;
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("5:token32:", cursor, 10);
+		cursor+=10;
+		memcpy(token, cursor, SHA256_BLOCK_SIZE);
+		cursor+=SHA256_BLOCK_SIZE;
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("e1:t2:aa1:y1:re", cursor, 15);
+		cursor+=15;
+	}
+	now += 1;
+
+	// Using the token from before that node then announces that it's a peer
+	{
+		struct sockaddr_in other;
+		other.sin_family = AF_INET;
+		inet_pton(AF_INET, "128.0.0.1", &other.sin_addr.s_addr);
+		other.sin_port = htons(3);
+
+		// Node announces that it's a peer for that torrent
+		char buff[] = "d1:ad2:id20:0000000000000000000012:implied_porti1e9:info_hash20:000000000000000000024:porti1337e5:token32:                                e1:q13:announce_peer1:t2:aa1:y1:qe";
+		memcpy(buff+106, token, SHA256_BLOCK_SIZE);
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&other, sizeof(other), now, &message_cursor, outbuff+2);
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
+
+		TEST_ASSERT_EQUAL(47, outbuff[0].payload_len);
+		char* cursor = outbuff[0].payload;
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:rd2:id20:BBBBBBBBBBBBBBBBBBBBe1:t2:aa1:y1:re", cursor, 47);
+		cursor+=47;
+	}
+	now += 1;
+
+	// The initial node responds with an id that happens to be closer to the
+	// announced infohash than we are. We should reannounce that infohash to
+	// it.
+	{
+		char buff[] = "d1:y1:r1:t1:01:rd2:id20:000000000000000000015:nodes0:ee";
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+2);
+
+
+// Disable this part since we don't currently implementing this functionality.
+// It's technically part of the Kademlia spec, but I don't see how you can
+// implement it in DHT
+#if 0
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
+		TEST_ASSERT_EQUAL(94, outbuff[0].payload_len);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB9:info_hash20:00000000000000000002e1:q9:get_peers1:t2:aa1:y:qe", outbuff[0].payload, 94);
+#else
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff);
+#endif
+	}
+
+#if 0
+	struct entry* entry = routing_get(&other);
+	TEST_ASSERT_NOT_NULL(entry);
+	{
+		struct sockaddr_in other;
+		other.sin_family = AF_INET;
+		inet_pton(AF_INET, "255.255.255.255", &other.sin_addr.s_addr);
+		other.sin_port = htons(6881);
+
+		char buff[] = "d1:ad2:id20:abcdefghij01234567896:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t2:aa1:y1:qe";
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, buff, sizeof(buff), &other, sizeof(other), 0, &message_cursor, outbuff+2);
+
+		// We should have sent a response
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
+
+		TEST_ASSERT_EQUAL(83, outbuff[0].payload_len);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:rd2:id20:BBBBBBBBBBBBBBBBBBBB5:nodes26:aaaaaaaaaaaaaaaaaaaa", outbuff[0].payload, 62);
+		TEST_ASSERT_EQUAL_MEMORY(&((struct sockaddr_in*)&remote)->sin_addr.s_addr, outbuff[0].payload+62, 4);
+		TEST_ASSERT_EQUAL_MEMORY(&((struct sockaddr_in*)&remote)->sin_port, outbuff[0].payload+66, 2);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("e1:t2:aa1:y1:re", outbuff[0].payload+68, 15);
+	}
+#endif
+
+	proto_end(&dht);
 }
