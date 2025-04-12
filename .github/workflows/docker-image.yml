@@ -20,5 +20,7 @@ jobs:
 
     - name: Push the image
       run: |
-        docker push app ghcr.io/delusionallogic/dht:1.${{ github.run_number }}
+        docker tag app ghcr.io/delusionallogic/dht:1.${{ github.run_number }}
+        docker push ghcr.io/delusionallogic/dht:1.${{ github.run_number }}
+        docker tag app ghcr.io/delusionallogic/dht:latest
         docker push app ghcr.io/delusionallogic/dht:latest
