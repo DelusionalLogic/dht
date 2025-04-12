@@ -1,3 +1,6 @@
 [submodule "thirdparty/Unity"]
 	path = thirdparty/Unity
 	url = https://github.com/ThrowTheSwitch/Unity.git
+[submodule "thirdparty/prometheus-client-c"]
+	path = thirdparty/prometheus-client-c
+	url = https://github.com/digitalocean/prometheus-client-c.git

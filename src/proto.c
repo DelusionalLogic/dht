@@ -518,6 +518,8 @@ void proto_begin(struct dht* dht, time_t now, struct message** output, const str
 		send_ping(dht, NULL, now, true, cur->ai_addr, cur->ai_addrlen, &msgbuff);
 	}
 
+	dht->tokens.head = 0;
+
 	freeaddrinfo(res);
 }
 

@@ -33,7 +33,7 @@ struct entry {
 };
 
 extern struct nodeid myID;
-extern struct entry table[];
+extern struct entry *table;
 extern int table_size;
 
 void routing_init(struct nodeid* myid);

@@ -4,6 +4,7 @@
 #include "metrics.h"
 
 #include <time.h>
+#include <sys/time.h>
 #include <assert.h>
 #include <errno.h>
 #include <signal.h>
@@ -158,13 +159,14 @@ int main(int argc, char** argv) {
 
 	struct dht dht = {0};
 	{
+		routing_init(NULL);
 		int rc = read_config();
 		if(rc == CONF_ENO) {
 			for(uint16_t i = 0; i < sizeof(myID.inner_b); i++) {
 				myID.inner_b[i] = rand();
 			}
 			/* myID = (struct nodeid){.inner={0xebe9bbf1, 0x3cdba6b3, 0x993e0c87, 0x900d5e25, 0x00000000}}; */
-			routing_flush();
+			routing_init(&myID);
 			allocate_hashtable();
 		}
 

@@ -42,9 +42,17 @@ struct table {
 
 struct table* pTable;
 
+struct nodeid myID;
+struct entry *table;
+int table_size = RT_SIZE;
+
 void routing_init(struct nodeid* myid) {
 	pTable = malloc(sizeof(struct table));
-	pTable->myID = *myid;
+	if(myid != NULL) pTable->myID = *myid;
+
+	table = pTable->table;
+	myID = pTable->myID;
+
 	routing_flush();
 }
 

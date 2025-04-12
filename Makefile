@@ -83,6 +83,5 @@ $(OBJDIR)/thirdparty/Unity/%.o: thirdparty/Unity/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(TEST_LIB_CFLAGS) $(TEST_LIB_INCS) $(INCS) -MMD -o $@ -c $<
 
-
 .DEFAULT_GOAL := all
 all: test dht
