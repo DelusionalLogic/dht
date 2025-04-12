@@ -16,12 +16,9 @@ jobs:
         submodules: "recursive"
 
     - name: Build the Docker image
-      run: docker build . --label "org.opencontainers.image.source=https://github.com/DelusionalLogic/dht" --file Dockerfile --tag ghcr.io/delusionallogic/dht:1.${{ github.run_number }}
-
-    - name: Tag as latest
-      run: docker tag ghcr.io/delusionallogic/dht:1.${{ github.run_number }}  ghcr.io/delusionallogic/dht:latest
+      run: docker build . --label "org.opencontainers.image.source=https://github.com/DelusionalLogic/dht" --file Dockerfile --tag app
 
     - name: Push the image
       run: |
-        docker push ghcr.io/delusionallogic/dht:1.${{ github.run_number }}
-        docker push ghcr.io/delusionallogic/dht:latest
+        docker push app ghcr.io/delusionallogic/dht:1.${{ github.run_number }}
+        docker push app ghcr.io/delusionallogic/dht:latest
