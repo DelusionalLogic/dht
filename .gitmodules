@@ -4,3 +4,6 @@
 [submodule "thirdparty/prometheus-client-c"]
 	path = thirdparty/prometheus-client-c
 	url = https://github.com/digitalocean/prometheus-client-c.git
+[submodule "thirdparty/crypto-algorithms"]
+	path = thirdparty/crypto-algorithms
+	url = https://github.com/B-Con/crypto-algorithms.git
