@@ -245,46 +245,6 @@ int send_ping(struct dht* dht, struct nodeid* expected, time_t now, bool node_is
 	return 0;
 }
 
-int send_announce(struct dht* dht, struct nodeid* expected, time_t now, bool node_is_new, const struct sockaddr* dest_addr, socklen_t dest_len, struct msgbuff* msgbuff) {
-	if(*msgbuff->messages >= msgbuff->messages_end)
-		return PROTO_ENOREQ;
-	struct message* message = *msgbuff->messages;
-
-	uint16_t reqId;
-	if(!alloc_req(dht, &reqId)) {
-		return PROTO_ENOREQ;
-	}
-
-	memcpy(&message->dest, dest_addr, dest_len);
-	message->dest_len = dest_len;
-
-	struct ping* data = &dht->requestdata[reqId].cont.ping;
-	if(!node_is_new) {
-		data->remote_id = *expected;
-	} else {
-		expected = &dht->self;
-	}
-	data->is_new = node_is_new;
-	data->attempt = 0;
-
-	dht->requestdata[reqId].fun = &getclient_response;
-	dht->requestdata[reqId].timeout = now + PROTO_TMOUT;
-	dht->requestdata[reqId].timeout_fun = &getclient_timeout;
-	memcpy(&dht->requestdata[reqId].addr, dest_addr, dest_len);
-	dht->requestdata[reqId].addr_len = dest_len;
-
-	struct nodeid target = rand_nodeid_in_bucket(&dht->self, expected);
-
-	message->payload_len = sizeof(message->payload);
-	int rc = write_find_node(message->payload, &message->payload_len, &dht->self, &target, reqId);
-	if(rc != 0) {
-		return rc;
-	}
-	(*msgbuff->messages)++;
-
-	return 0;
-}
-
 PROCESS_TIMEOUT(getclient_timeout) {
 	// @HACK: This really sucks. maybe we should just pass in the request id
 	size_t reqId = (typeof(dht->requestdata[0])*)((void*)cont - offsetof(typeof(dht->requestdata[0]), cont)) - dht->requestdata;
@@ -573,7 +533,7 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 		if(transaction == NULL)
 			fatal("No transaction in request");
 		if(transaction_len > 16) {
-			prom_counter_inc(queries, (const char *[]){"discard"});
+			prom_counter_inc(queries, (const char *[]){query, "discard"});
 			err("DISCARD: Transaction ID is too long");
 			return 0;
 		}
@@ -594,7 +554,7 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 		char respType = 'r';
 		rc = handle_request(&dht->self, &dht->tokens, now, query, (const struct sockaddr*)remote, remote_len, packet, packet_len, &cursor, end-cursor-1);
 		if(rc == QUERY_EUNK) {
-			prom_counter_inc(queries, (const char *[]){"unknown"});
+			prom_counter_inc(queries, (const char *[]){query, "unknown"});
 			// @FRAGILE: @HACK: Static offsets to fiddle with already written
 			// out packet data. Acceptable because this is the uncommon error
 			// case.
@@ -611,7 +571,7 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 
 			// Use the normal finalize flow
 		} else if(rc == QUERY_EBADQ) {
-			prom_counter_inc(queries, (const char *[]){"badquery"});
+			prom_counter_inc(queries, (const char *[]){query, "badquery"});
 			// @FRAGILE: @HACK: Static offsets to fiddle with already written
 			// out packet data. Acceptable because this is the uncommon error
 			// case.
@@ -627,7 +587,7 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 			assert(cursor < end);
 
 			// Use the normal finalize flow
-		} else if(rc == 0) prom_counter_inc(queries, (const char *[]){"ok"});
+		} else if(rc == 0) prom_counter_inc(queries, (const char *[]){query, "ok"});
 		else fatal("Error handling request");
 
 		rc = snprintf(cursor, end-cursor , "1:t%ld:", transaction_len);

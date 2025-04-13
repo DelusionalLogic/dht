@@ -132,8 +132,8 @@ void metric_init() {
 		prom_counter_new(
 			"queries",
 			"Amount of queries handled",
-			1,
-			(const char *[]){"outcome"}
+			2,
+			(const char *[]){"type", "outcome"}
 		)
 	);
 
