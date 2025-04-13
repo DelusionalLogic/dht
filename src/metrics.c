@@ -76,7 +76,7 @@ void metric_init() {
 
 	bytesRecv = prom_collector_registry_must_register_metric(
 		prom_counter_new(
-			"bytes_received",
+			"dht_bytes_received_total",
 			"Number of bytes received",
 			0,
 			NULL
@@ -85,7 +85,7 @@ void metric_init() {
 
 	bytesSent = prom_collector_registry_must_register_metric(
 		prom_counter_new(
-			"bytes_sent",
+			"dht_bytes_sent_total",
 			"Number of bytes sent",
 			0,
 			NULL
@@ -94,7 +94,7 @@ void metric_init() {
 
 	meta = prom_collector_registry_must_register_metric(
 		prom_counter_new(
-			"meta",
+			"dht_meta_info",
 			"Meta information value is always 1",
 			1,
 			(const char *[]){ "nodeid" }
@@ -103,7 +103,7 @@ void metric_init() {
 
 	peers = prom_collector_registry_must_register_metric(
 		prom_counter_new(
-			"peers",
+			"dht_peers_total",
 			"Number of total peers",
 			0,
 			NULL
@@ -112,7 +112,7 @@ void metric_init() {
 
 	hashes = prom_collector_registry_must_register_metric(
 		prom_counter_new(
-			"hashes",
+			"dht_hashes_total",
 			"Number of hashes currently stored",
 			0,
 			NULL
@@ -121,7 +121,7 @@ void metric_init() {
 
 	hash_expired = prom_collector_registry_must_register_metric(
 		prom_counter_new(
-			"hashes_expired",
+			"dht_hashes_expired_total",
 			"Number of hashes expired due to inactivity",
 			0,
 			NULL
@@ -130,7 +130,7 @@ void metric_init() {
 
 	queries = prom_collector_registry_must_register_metric(
 		prom_counter_new(
-			"queries",
+			"dht_queries_total",
 			"Amount of queries handled",
 			2,
 			(const char *[]){"type", "outcome"}
@@ -139,7 +139,7 @@ void metric_init() {
 
 	requests = prom_collector_registry_must_register_metric(
 		prom_counter_new(
-			"requests",
+			"dht_requests_total",
 			"Number of requests sent by us",
 			0,
 			NULL
@@ -148,7 +148,7 @@ void metric_init() {
 
 	requestsInFlight = prom_collector_registry_must_register_metric(
 		prom_gauge_new(
-			"requests_in_flight",
+			"dht_requests_in_flight",
 			"Requests currently in flight",
 			0,
 			NULL
@@ -157,7 +157,7 @@ void metric_init() {
 
 	retries = prom_collector_registry_must_register_metric(
 		prom_counter_new(
-			"retries",
+			"dht_retries_total",
 			"Retries sent for unanswered requests",
 			0,
 			NULL
@@ -166,7 +166,7 @@ void metric_init() {
 
 	offered = prom_collector_registry_must_register_metric(
 		prom_histogram_new(
-			"offered",
+			"dht_offered",
 			"Nodes seen and considered for the routing table",
 			prom_histogram_buckets_linear(0, 1, 157),
 			0,
@@ -176,7 +176,7 @@ void metric_init() {
 
 	activeNodes = prom_collector_registry_must_register_metric(
 		prom_gauge_new(
-			"active_nodes",
+			"dht_active_nodes",
 			"Nodes active in the routing table",
 			0,
 			NULL

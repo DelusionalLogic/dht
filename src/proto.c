@@ -454,7 +454,7 @@ void proto_begin(struct dht* dht, time_t now, struct message** output, const str
 	}
 	struct sockaddr_in bindAddr = {0};
 	bindAddr.sin_family = AF_INET;
-	bindAddr.sin_port = htons(6886);
+	bindAddr.sin_port = htons(6881);
 	bindAddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	if(bind(dht->sfd, (struct sockaddr*)&bindAddr, sizeof(struct sockaddr_in)) != 0) {
 		err("Bind failed");
@@ -468,7 +468,8 @@ void proto_begin(struct dht* dht, time_t now, struct message** output, const str
 	hints.ai_flags = AI_NUMERICSERV;
 
 	struct addrinfo* res;
-	int rc = getaddrinfo("router.bittorrent.com", "6881", &hints, &res);
+	// int rc = getaddrinfo("router.bittorrent.com", "6881", &hints, &res);
+	int rc = getaddrinfo("jnsn.dev", "6881", &hints, &res);
 	if(rc != 0) {
 		err("Failed getting the bootstrap ip: %s", gai_strerror(rc));
 		exit(EXIT_FAILURE);
