@@ -468,8 +468,8 @@ void proto_begin(struct dht* dht, time_t now, struct message** output, const str
 	hints.ai_flags = AI_NUMERICSERV;
 
 	struct addrinfo* res;
-	// int rc = getaddrinfo("router.bittorrent.com", "6881", &hints, &res);
-	int rc = getaddrinfo("jnsn.dev", "6881", &hints, &res);
+	int rc = getaddrinfo("router.bittorrent.com", "6881", &hints, &res);
+	// int rc = getaddrinfo("jnsn.dev", "6881", &hints, &res);
 	if(rc != 0) {
 		err("Failed getting the bootstrap ip: %s", gai_strerror(rc));
 		exit(EXIT_FAILURE);
