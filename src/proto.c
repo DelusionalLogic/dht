@@ -368,7 +368,8 @@ PROCESS_REPONSE(getclient_response) {
 					bcur_next(&bcursor, 1);
 					break;
 				case -BENC_EBADP:
-					fatal("Bad dict");
+					err("Bad Dictionary, Discard packet");
+					return PROTO_EDISC;
 			}
 		}
 
@@ -763,7 +764,9 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 				break;
 			}
 			case -BENC_EBADP:
-				fatal("Bad dict");
+				err("Bad Dictionary, we drop this packet");
+				recalulate_waketime(dht);
+				return 0;
 		}
 	}
 

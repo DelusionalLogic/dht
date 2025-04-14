@@ -64,7 +64,8 @@ int handle_request(struct nodeid* self, struct tokens *tokens, time_t now, const
 					bcur_next(&bcursor, 1);
 					break;
 				case -BENC_EBADP:
-					fatal("Bad dict");
+					err("Bad query: Bad Dictionary");
+					return QUERY_EBADQ;
 			}
 		}
 
@@ -135,7 +136,8 @@ int handle_request(struct nodeid* self, struct tokens *tokens, time_t now, const
 					bcur_next(&bcursor, 1);
 					break;
 				case -BENC_EBADP:
-					fatal("Bad dict");
+					err("Bad query: Bad Dictionary");
+					return QUERY_EBADQ;
 			}
 		}
 
@@ -233,7 +235,8 @@ int handle_request(struct nodeid* self, struct tokens *tokens, time_t now, const
 					bcur_next(&bcursor, 1);
 					break;
 				case -BENC_EBADP:
-					fatal("Bad dict");
+					err("Bad query: Bad Dictionary");
+					return QUERY_EBADQ;
 			}
 		}
 
@@ -443,7 +446,8 @@ int handle_request(struct nodeid* self, struct tokens *tokens, time_t now, const
 					bcur_next(&bcursor, 1);
 					break;
 				case -BENC_EBADP:
-					fatal("Bad dict");
+					err("Bad query: Bad Dictionary");
+					return QUERY_EBADQ;
 			}
 		}
 
