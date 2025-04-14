@@ -8,6 +8,7 @@ prom_counter_t *bytesSent = NULL;
 
 prom_counter_t *meta = NULL;
 prom_counter_t *peers = NULL;
+prom_gauge_t *current_hashes = NULL;
 prom_counter_t *hashes = NULL;
 prom_counter_t *hash_expired = NULL;
 prom_counter_t *queries = NULL;
@@ -105,6 +106,15 @@ void metric_init() {
 		prom_counter_new(
 			"dht_peers_total",
 			"Number of total peers",
+			0,
+			NULL
+		)
+	);
+
+	current_hashes = prom_collector_registry_must_register_metric(
+		prom_gauge_new(
+			"dht_live_hashes_total",
+			"Number of hashes with active peers",
 			0,
 			NULL
 		)

@@ -105,6 +105,7 @@ int add_peer(struct infohash* infohash, struct addr* peer, time_t now) {
 	peer_status.peers++;
 	prom_counter_inc(peers, NULL);
 
+	prom_gauge_set(current_hashes, (double)peer_table_load, NULL);
 	return 0;
 }
 
@@ -155,6 +156,9 @@ void expire_hashes(time_t now) {
 
 		// Remove the slot
 		entry->set = false;
+		peer_table_load--;
 		prom_counter_inc(hash_expired, NULL);
 	}
+
+	prom_gauge_set(current_hashes, (double)peer_table_load, NULL);
 }
