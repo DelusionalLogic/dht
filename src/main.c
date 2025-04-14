@@ -256,6 +256,9 @@ int main(int argc, char** argv) {
 		time_t now = time(NULL);
 		rc = proto_run(&dht, buff, recv_len, (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+OUTBOX_SIZE);
 		flush_messages(dht.sfd, outbuff, message_cursor);
+
+		dbg("Writing out config");
+		save_config();
 	}
 
 	proto_end(&dht);
