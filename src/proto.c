@@ -693,6 +693,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 				fatal("NOPE %d", rc);
 			}
 
+			prom_counter_inc(keepalive_count, NULL);
 			oldest->expire = 0;
 			routing_oldest(&oldest);
 		}

@@ -17,6 +17,7 @@ prom_histogram_t *offered = NULL;
 prom_gauge_t *activeNodes = NULL;
 prom_gauge_t *requestsInFlight = NULL;
 prom_counter_t *retries = NULL;
+prom_counter_t *keepalive_count = NULL;
 
 enum MHD_Result promhttp_handler(
 	void *cls,
@@ -188,6 +189,15 @@ void metric_init() {
 		prom_gauge_new(
 			"dht_active_nodes",
 			"Nodes active in the routing table",
+			0,
+			NULL
+		)
+	);
+
+	keepalive_count = prom_collector_registry_must_register_metric(
+		prom_counter_new(
+			"dht_keepalive_count",
+			"Number of times a node has been pinged due to inactivity",
 			0,
 			NULL
 		)
