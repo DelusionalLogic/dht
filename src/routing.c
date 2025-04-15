@@ -136,8 +136,9 @@ static uint8_t rand_byte() {
 
 struct nodeid rand_nodeid_in_bucket(struct nodeid *self, struct nodeid *other) {
 	struct nodeid target;
-	for(uint8_t *target_byte = (uint8_t*)&target; target_byte < ((uint8_t*)&target)+sizeof(target); target_byte++) {
-		*target_byte = rand_byte();
+	{
+		char *target_byte = (char*)&target;
+		for(size_t i = 0; i < sizeof(target); i++) (*target_byte++) = rand_byte();
 	}
 
 	uint8_t bucket = prefix(self, other);
