@@ -157,16 +157,13 @@ bool find_req(struct dht* dht, uint32_t transId, uint16_t* reqId) {
 	return dht->reqalloc[transId];
 }
 
-struct msgbuff {
-	struct message** messages;
-	const struct message* const messages_end;
-};
-
 #define PROTO_EDISC 1
 #define PROTO_ENOREQ 2
 
 PROCESS_REPONSE(getclient_response);
 PROCESS_TIMEOUT(getclient_timeout);
+
+PROCESS_REPONSE(lookup_response);
 
 // Number of nodeid bits
 #define IDBITS 160
@@ -202,6 +199,37 @@ int write_find_node(char* buff, size_t* buff_len, struct nodeid* self, struct no
 	buff += rc;
 
 	*buff_len = buff - (buff_end - *buff_len);
+	return 0;
+}
+
+int send_lookup(struct dht* dht, struct nodeid* target, time_t now, const struct sockaddr* dest_addr, socklen_t dest_len, struct msgbuff* msgbuff) {
+	if(*msgbuff->messages >= msgbuff->messages_end)
+		return PROTO_ENOREQ;
+	struct message* message = *msgbuff->messages;
+
+	uint16_t reqId;
+	if(!alloc_req(dht, &reqId)) {
+		return PROTO_ENOREQ;
+	}
+
+	memcpy(&message->dest, dest_addr, dest_len);
+	message->dest_len = dest_len;
+
+	dht->requestdata[reqId].cont.lookup = &dht->lookup;
+
+	dht->requestdata[reqId].fun = &lookup_response;
+	dht->requestdata[reqId].timeout = now + PROTO_TMOUT;
+	dht->requestdata[reqId].timeout_fun = NULL;
+	memcpy(&dht->requestdata[reqId].addr, dest_addr, dest_len);
+	dht->requestdata[reqId].addr_len = dest_len;
+
+	message->payload_len = sizeof(message->payload);
+	int rc = write_find_node(message->payload, &message->payload_len, &dht->self, target, reqId);
+	if(rc != 0) {
+		return rc;
+	}
+	(*msgbuff->messages)++;
+
 	return 0;
 }
 
@@ -241,6 +269,165 @@ int send_ping(struct dht* dht, struct nodeid* expected, time_t now, bool node_is
 		return rc;
 	}
 	(*msgbuff->messages)++;
+
+	return 0;
+}
+
+PROCESS_REPONSE(lookup_response) {
+	struct benc_node stream[256];
+	struct bcursor bcursor;
+	bcur_open(&bcursor, packet, packet+packet_len, stream, 256);
+
+	if(bcursor.end - bcursor.readhead <= 0) {
+		fatal("Response too short");
+	}
+
+	struct nodeid id;
+	uint8_t nodes_len;
+	struct nodeid nodes[8];
+	struct in_addr ips[8];
+	uint16_t ports[8];
+
+	// Read the payload
+	{
+		// Check that we have a dict
+		if(bcursor.readhead->type != BNT_DICT) {
+			fatal("Response is not a dict");
+		}
+		bcur_next(&bcursor, 1);
+
+		bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING}, (const char*[]){"r"}, (const size_t[]){1}, 1);
+		// Skip the key
+		bcur_next(&bcursor, 1);
+
+		if(bcursor.readhead->type != BNT_DICT) {
+			fatal("Wrong value type for response");
+		}
+
+		// Skip the dict element
+		bcur_next(&bcursor, 1);
+
+		uint8_t parts = 0;
+		while(bcursor.readhead->type != BNT_END) {
+			switch(bcur_find_key(&bcursor, (const enum benc_nodetype[]){BNT_STRING, BNT_STRING}, (const char*[]){"nodes", "id"}, (const size_t[]){5, 2}, 2)) {
+				case 0:
+					// Skip the key
+					bcur_next(&bcursor, 1);
+
+					if(bcursor.readhead->type != BNT_STRING) {
+						fatal("Nodes must be a string");
+					}
+
+					if((bcursor.readhead->size % 26) != 0) {
+						fatal("Nodes string value must be a multiple of 26");
+					}
+
+					nodes_len = MIN(bcursor.readhead->size/26, 8);
+					for(int i = 0; i < nodes_len; i++) {
+						memcpy(nodes+i, bcursor.readhead->loc+(26*i), 20);
+						memcpy(ips+i, bcursor.readhead->loc+(26*i)+20, 4);
+						memcpy(ports+i, bcursor.readhead->loc+(26*i)+24, 2);
+					}
+
+					parts++;
+
+					// Skip the value
+					bcur_next(&bcursor, 1);
+					break;
+				case 1:
+					// Skip the key
+					bcur_next(&bcursor, 1);
+
+					if(bcursor.readhead->type != BNT_STRING) {
+						fatal("Wrong value type for response");
+					}
+
+					if(bcursor.readhead->size != 20) {
+						fatal("remote node id was not 20 bytes long");
+					}
+
+					memcpy(&id, bcursor.readhead->loc, 20);
+
+					parts++;
+
+					// Skip the value
+					bcur_next(&bcursor, 1);
+					break;
+				case -BENC_EBADP:
+					err("Bad Dictionary, Discard packet");
+					return PROTO_EDISC;
+			}
+		}
+
+		if(parts < 2) {
+			err("Response didn't contain nodes and id");
+			return PROTO_EDISC;
+		}
+	}
+
+	uint8_t my_score = prefix(&id, &cont->lookup->target);
+
+	// We need to find the best match that we are still better than
+	uint32_t match_i = 0;
+	uint8_t match_score = 0;
+	for(size_t i = 0; i < 8; i++) {
+		dbg("PORT %d", cont->lookup->closest_addr[i].port);
+		if(cont->lookup->closest_addr[i].port == 0) {
+			match_i = i;
+			match_score = UINT8_MAX; // Bogus value to signal that we found something
+			break;
+		}
+
+		uint8_t their_score = prefix(&cont->lookup->closest[i], &cont->lookup->target);
+		if(their_score > match_score && my_score > their_score) {
+			match_score = their_score;
+			match_i = i;
+		}
+	}
+
+	if(match_score != 0) {
+		cont->lookup->closest[match_i] = id;
+
+		struct sockaddr_in* ipv4 = (struct sockaddr_in*)remote;
+		cont->lookup->closest_addr[match_i].ip = ipv4->sin_addr.s_addr;
+		cont->lookup->closest_addr[match_i].port = ipv4->sin_port;
+	} else {
+		dbg("Discarding response from node behind the frontier");
+	}
+
+	uint8_t worst_match = UINT8_MAX;
+	for(size_t i = 0; i < 8; i++) {
+		if(cont->lookup->closest_addr[i].port == 0) {
+			worst_match = 0;
+			break;
+		}
+
+		worst_match = MIN(worst_match, prefix(&cont->lookup->closest[i], &cont->lookup->target));
+	}
+
+	// Fan out the search if the nodes are better than the worst one in the frontier
+	for(uint8_t i = 0; i < nodes_len; i++) {
+		// Don't fan out to anything that is a worse match than our current frontier
+		if(prefix(&nodes[i], &cont->lookup->target) <= worst_match) continue;
+
+		// @ROBUST: Some nodes report a bunch of nodes in the same ip. Maybe we
+		// could check for that here
+
+		struct sockaddr_in dest = {
+			.sin_family = AF_INET,
+			.sin_addr = ips[i],
+			.sin_port = ports[i],
+		};
+
+		int rc = send_lookup(dht, &cont->lookup->target, now, (struct sockaddr*)&dest, sizeof(struct sockaddr_in), msgbuff);
+		if(rc == PROTO_ENOREQ) {
+			return rc;
+		} else if(rc != 0) {
+			fatal("failed %d", rc);
+		}
+
+		cont->lookup->timeout = now;
+	}
 
 	return 0;
 }

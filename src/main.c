@@ -129,18 +129,6 @@ void flush_messages(int sfd, struct message* cursor, const struct message* const
 	}
 }
 
-struct lookup {
-	struct nodeid target;
-
-	struct nodeid closest[8];
-	struct addr closest_addr[8];
-	bool closest_valid[8]; // @SLOP: This could be a single word
-
-	uint64_t outstanding;
-
-	time_t wake;
-};
-
 #define OUTBOX_SIZE 32
 int main(int argc, char** argv) {
 	srand(time(NULL));
@@ -183,20 +171,20 @@ int main(int argc, char** argv) {
 	proto_begin(&dht, time(NULL), &message_cursor, outbuff+32);
 	flush_messages(dht.sfd, outbuff, message_cursor);
 
-	/* struct lookup lookup; */
-	/* // Init the lookup */
-	/* { */
-	/* 	lookup.wake = 0; */
-	/* 	lookup.target = (struct nodeid){.inner={0x19b8a941, 0x38fa0191, 0x1403fac2, 0x581000ab, 0x19583cda}}; */
+	// Init the lookup
+	struct lookup *lookup = &dht.lookup;
+	{
+		lookup->timeout = 0;
+		lookup->target = (struct nodeid){.inner={0x19b8a941, 0x38fa0191, 0x1403fac2, 0x581000ab, 0x19583cda}};
 
-	/* 	struct entry* entry[8]; */
-	/* 	int found = routing_closest(&lookup.target, 8, entry); */
-	/* 	for(size_t i = 0; i < found; i++) { */
-	/* 		lookup.closest[i] = entry[i]->id; */
-	/* 		lookup.closest_addr[i] = entry[i]->addr; */
-	/* 		lookup.closest_valid[i] = true; */
-	/* 	} */
-	/* } */
+		struct entry* entry[8];
+		int found = routing_closest(&lookup->target, sizeof(entry)/sizeof(entry[0]), entry);
+		assert(found == 8);
+		for(size_t i = 0; i < found; i++) {
+			lookup->closest[i] = entry[i]->id;
+			lookup->closest_addr[i] = entry[i]->addr;
+		}
+	}
 
 #define RECV_BUFF_SIZE 4096
 	char buff_storage[RECV_BUFF_SIZE+1];

@@ -21,6 +21,15 @@ struct tokens {
 	size_t head;
 };
 
+struct lookup {
+	struct nodeid target;
+
+	struct nodeid closest[8];
+	struct addr closest_addr[8];
+
+	time_t timeout;
+};
+
 void token_create(struct tokens* tokens, time_t now, struct addr* remote, char* token);
 int token_validate(struct tokens* tokens, time_t now, struct addr* remote, char* token);
 
@@ -40,10 +49,15 @@ struct ping {
 
 union message_cont {
 	struct ping ping;
+	struct lookup *lookup;
 };
 
 struct dht;
-struct msgbuff;
+struct msgbuff {
+	struct message** messages;
+	const struct message* const messages_end;
+};
+
 
 #define PROCESS_REPONSE(NAME) int (NAME)(struct dht* dht, time_t now, union message_cont* cont, char* packet, size_t packet_len, int socket, struct sockaddr* remote, socklen_t remote_len, struct msgbuff* msgbuff)
 typedef PROCESS_REPONSE(resp);
@@ -67,6 +81,8 @@ struct dht {
 		union message_cont cont;
 	} requestdata[MAX_INFLIGHT];
 
+	struct lookup lookup;
+
 	time_t wake;
 	struct tokens tokens;
 };
@@ -77,6 +93,8 @@ struct message {
 	struct sockaddr_storage dest;
 	socklen_t dest_len;
 };
+
+int send_lookup(struct dht* dht, struct nodeid* target, time_t now, const struct sockaddr* dest_addr, socklen_t dest_len, struct msgbuff* msgbuff);
 
 void proto_begin(struct dht* dht, time_t now, struct message** output, const struct message* const output_end);
 int proto_run(struct dht* dht, char* buffer, size_t buffer_len, struct sockaddr_in* remote, socklen_t remote_len, time_t now, struct message** output, const struct message* const output_end);

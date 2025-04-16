@@ -690,3 +690,122 @@ void test_node_closer_to_infohash_is_discovered() {
 
 	proto_end(&dht);
 }
+
+void test_lookup_response() {
+	struct message outbuff[10] = {0};
+	time_t now = 0;
+
+	struct sockaddr_in remote;
+
+	struct dht dht;
+	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+	routing_init(&dht.self);
+
+	
+	// There's no requirement that nodes we issue lookups against are in our
+	// routing table. We therefore don't insert anything in there.
+
+	{
+		struct message* message_cursor = outbuff;
+		proto_begin(&dht, 0, &message_cursor, outbuff+2);
+		// We just ignore the first ping. The bootstrap node never responds.
+	}
+	now += 10;
+	
+	// There's no fixed api for issuing a lookup command. We just fill in the
+	// structure and issue the requests
+	{
+		struct lookup *lookup = &dht.lookup;
+		lookup->timeout = now;
+		lookup->target = (struct nodeid){.inner={0x61616161, 0x61616161, 0x61616161, 0x61616161, 0x61616161}};
+
+		for(size_t i = 0; i < 8; i++) {
+			// Setting the port to 0 indicates that this slot is unallocated
+			lookup->closest_addr[i].port = 0;
+		}
+	}
+
+	{
+		// After setting up the command, we issue a request to a node.
+		remote = (struct sockaddr_in){
+			.sin_family = AF_INET,
+			.sin_addr = {0xFFFFFFFF},
+			.sin_port = 1,
+		};
+		struct message* message_cursor = outbuff;
+		int rc = send_lookup(&dht, &dht.lookup.target, now, (struct sockaddr*)&remote, sizeof(remote), &(struct msgbuff){&message_cursor, outbuff+2});
+
+		TEST_ASSERT_EQUAL(rc, 0);
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
+		TEST_ASSERT_EQUAL(91, outbuff[0].payload_len);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t1:11:y1:qe", outbuff[0].payload, 91);
+		TEST_ASSERT_EQUAL(dht.lookup.timeout, now);
+	}
+	now += 1;
+
+	{
+		// The node responds. This should add it to our frontier since it's
+		// empty. It should also fan out the search into what it returns since
+		// we still have empty spots after adding this one.
+		char buff[] = "d1:y1:r1:t1:11:rd2:id20:CBBBBBBBBBBBBBBBBBBB5:nodes26:aBBBBBBBBBBBBBBBBBBB\xFF\xFF\xFF\xFF\x00\x01""ee";
+		struct message* message_cursor = outbuff;
+		int rc = proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+2);
+
+		TEST_ASSERT_EQUAL(rc, 0);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[0], "CBBBBBBBBBBBBBBBBBBB", 20);
+
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
+		TEST_ASSERT_EQUAL(91, outbuff[0].payload_len);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t1:21:y1:qe", outbuff[0].payload, 91);
+		TEST_ASSERT_EQUAL(dht.lookup.timeout, now);
+
+		memcpy(&remote, &outbuff[0].dest, sizeof(remote));
+	}
+
+	// In actual use, we would have a lot more network/public api traffic here
+	// that would respond to some more pings. I don't want to write that code,
+	// so instead I'll just fill out some of the internal structured myself.
+	//
+	// What we are emulating is that a bunch of nodes responded before the one
+	// we just asserted above. Those nodes happened to be closer to the final
+	// target than the outstanding request we have going on.
+	{
+		for(size_t i = 0; i < 8; i++) {
+			dht.lookup.closest[i] = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+			// The first two bytes match
+			dht.lookup.closest[i].inner_b[0] = 'a';
+			dht.lookup.closest[i].inner_b[1] = 'a';
+			dht.lookup.closest[i].inner_b[2] += i;
+
+			dht.lookup.closest_addr[i].ip = 0;
+			dht.lookup.closest_addr[i].port = 1;
+		}
+	}
+	now += 1;
+
+	{
+		// The node now finally responds, but woops only the first byte of its
+		// ID matches. That's worse than the frontier and shouldn't cause any
+		// addtional adjustment to the frontier.
+		// It also includes a new node that's also behind the frontier, we
+		// don't send anything to that one
+		char buff[] = "d1:y1:r1:t1:21:rd2:id20:aBBBBBBBBBBBBBBBBBBB5:nodes26:aaBBBBBBBBBBBBBBBBBB\xFF\xFF\xFF\xFF\x00\x01""ee";
+		struct message* message_cursor = outbuff;
+		int rc = proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+2);
+
+		TEST_ASSERT_EQUAL(rc, 0);
+		// We only need to check this once since we always pick the first slot
+		// with a given score. It's a little implementation dependant, but it
+		// beats having 8 asserts.
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[0], "aaBBBBBBBBBBBBBBBBBB", 20);
+
+		// And we didn't fan out to the new node, even though it's actually a better match than any of the ones we have
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff);
+
+		// Timeout isn't updated since we didn't send anything
+		// @FRAGILE this has to match the step size of now
+		TEST_ASSERT_EQUAL(dht.lookup.timeout, now-1);
+	}
+
+	proto_end(&dht);
+}
