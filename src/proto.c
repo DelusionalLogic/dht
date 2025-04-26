@@ -218,7 +218,7 @@ int send_lookup(struct dht* dht, struct nodeid* target, time_t now, const struct
 	dht->requestdata[reqId].cont.lookup = &dht->lookup;
 
 	dht->requestdata[reqId].fun = &lookup_response;
-	dht->requestdata[reqId].timeout = now + PROTO_TMOUT;
+	dht->requestdata[reqId].timeout = 0;
 	dht->requestdata[reqId].timeout_fun = NULL;
 	memcpy(&dht->requestdata[reqId].addr, dest_addr, dest_len);
 	dht->requestdata[reqId].addr_len = dest_len;
@@ -371,7 +371,6 @@ PROCESS_REPONSE(lookup_response) {
 	uint32_t match_i = 0;
 	uint8_t match_score = 0;
 	for(size_t i = 0; i < 8; i++) {
-		dbg("PORT %d", cont->lookup->closest_addr[i].port);
 		if(cont->lookup->closest_addr[i].port == 0) {
 			match_i = i;
 			match_score = UINT8_MAX; // Bogus value to signal that we found something
@@ -407,8 +406,21 @@ PROCESS_REPONSE(lookup_response) {
 
 	// Fan out the search if the nodes are better than the worst one in the frontier
 	for(uint8_t i = 0; i < nodes_len; i++) {
-		// Don't fan out to anything that is a worse match than our current frontier
-		if(prefix(&nodes[i], &cont->lookup->target) <= worst_match) continue;
+		uint8_t candidate_score = prefix(&nodes[i], &cont->lookup->target);
+
+		bool better_than_any = false;
+		bool already_matched = false;
+		for(uint8_t j = 0; j < 8; j++) {
+			if(candidate_score > prefix(&cont->lookup->closest[j], &cont->lookup->target))
+				better_than_any = true;
+
+			if(prefix(&nodes[i], &cont->lookup->closest[j]) == 160)
+				already_matched = true;
+		}
+
+		// Don't fan out to anything that is a worse match than or already
+		// included in our current frontier
+		if(!better_than_any || already_matched) continue;
 
 		// @ROBUST: Some nodes report a bunch of nodes in the same ip. Maybe we
 		// could check for that here
@@ -426,7 +438,7 @@ PROCESS_REPONSE(lookup_response) {
 			fatal("failed %d", rc);
 		}
 
-		cont->lookup->timeout = now;
+		cont->lookup->timeout = now + 120;
 	}
 
 	return 0;
@@ -822,6 +834,10 @@ static void recalulate_waketime(struct dht *dht) {
 		if(dht->wake == 0 || (timeout != 0 && difftime(timeout, dht->wake) < 0))
 			dht->wake = timeout;
 	}
+
+	if(dht->wake == 0 || difftime(dht->lookup.timeout, dht->wake) < 0) {
+		dht->wake = dht->lookup.timeout;
+	}
 }
 
 int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* remote, socklen_t remote_len, time_t now, struct message** output, const struct message* const output_end) {
@@ -958,56 +974,10 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 		}
 	}
 
-	recalulate_waketime(dht);
-
 	int rc = handle_packet(dht, now, type, transaction_set ? transaction : NULL, transaction_len, query_set ? query : NULL, query_len, buff, recv_len, remote, remote_len, &msgbuff);
 	assert(rc == 0);
 
-	// Debug output
-
-	{
-		printf("In flight |");
-		uint16_t inflight = 0;
-		for(int i = 0; i < MAX_INFLIGHT; i++) {
-			if(dht->reqalloc[i]) {
-				printf("#");
-				inflight++;
-			} else {
-				printf(" ");
-			}
-		}
-		printf("|\n");
-		prom_gauge_set(requestsInFlight, inflight, NULL);
-	}
-	{
-		int filled;
-		int total;
-#define LFACLEN 64
-		double load_factor[LFACLEN] = {0};
-		routing_status(&filled, &total, load_factor, LFACLEN);
-		prom_gauge_set(activeNodes, filled, NULL);
-		dbg("%d/%d nodes in routing table", filled, total);
-
-#define GRAPHY 5
-		// @HACK @CLEANUP: I'm pretty zooted right now. I have zero confidence
-		// that this is correct. It looks allright though.
-		for(int y = 0; y < GRAPHY; y++) {
-			printf("|");
-			for(int x = 0; x < LFACLEN; x++) {
-				double cell_load = CLAMP((load_factor[x] - ((1.0/GRAPHY) * (GRAPHY-y-1))) * GRAPHY, 0, 1);
-				if(cell_load == 0.0) {
-					printf(" ");
-				} else if (cell_load > 1.0 - 1.0/GRAPHY) {
-					printf("#");
-				} else {
-					printf("%d", (int)(cell_load*10));
-				}
-			}
-			printf("|\n");
-		}
-#undef GRAPHY
-#undef LFACLEN
-	}
+	recalulate_waketime(dht);
 
 	return 0;
 }

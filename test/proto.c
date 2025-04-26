@@ -757,7 +757,7 @@ void test_lookup_response() {
 		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
 		TEST_ASSERT_EQUAL(91, outbuff[0].payload_len);
 		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t1:21:y1:qe", outbuff[0].payload, 91);
-		TEST_ASSERT_EQUAL(dht.lookup.timeout, now);
+		TEST_ASSERT_EQUAL(now+120, dht.lookup.timeout);
 
 		memcpy(&remote, &outbuff[0].dest, sizeof(remote));
 	}
@@ -775,7 +775,7 @@ void test_lookup_response() {
 			// The first two bytes match
 			dht.lookup.closest[i].inner_b[0] = 'a';
 			dht.lookup.closest[i].inner_b[1] = 'a';
-			dht.lookup.closest[i].inner_b[2] += i;
+			dht.lookup.closest[i].inner_b[2] = 'a' + i;
 
 			dht.lookup.closest_addr[i].ip = 0;
 			dht.lookup.closest_addr[i].port = 1;
@@ -787,9 +787,9 @@ void test_lookup_response() {
 		// The node now finally responds, but woops only the first byte of its
 		// ID matches. That's worse than the frontier and shouldn't cause any
 		// addtional adjustment to the frontier.
-		// It also includes a new node that's also behind the frontier, we
-		// don't send anything to that one
-		char buff[] = "d1:y1:r1:t1:21:rd2:id20:aBBBBBBBBBBBBBBBBBBB5:nodes26:aaBBBBBBBBBBBBBBBBBB\xFF\xFF\xFF\xFF\x00\x01""ee";
+		// It also includes a new node that's better than some nodes in the
+		// current frontier, but is also already included.
+		char buff[] = "d1:y1:r1:t1:21:rd2:id20:aBBBBBBBBBBBBBBBBBBB5:nodes52:aaaBBBBBBBBBBBBBBBBB\xFF\xFF\xFF\xFF\x00\x01""aaBBBBBBBBBBBBBBBBBB\xFF\xFF\xFF\xFE\x00\x01""ee";
 		struct message* message_cursor = outbuff;
 		int rc = proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+2);
 
@@ -797,14 +797,14 @@ void test_lookup_response() {
 		// We only need to check this once since we always pick the first slot
 		// with a given score. It's a little implementation dependant, but it
 		// beats having 8 asserts.
-		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[0], "aaBBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[0], "aaaBBBBBBBBBBBBBBBBB", 20);
 
-		// And we didn't fan out to the new node, even though it's actually a better match than any of the ones we have
+		// And we didn't fan out to the new node since it's already part of the current frontier
 		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff);
 
 		// Timeout isn't updated since we didn't send anything
 		// @FRAGILE this has to match the step size of now
-		TEST_ASSERT_EQUAL(dht.lookup.timeout, now-1);
+		TEST_ASSERT_EQUAL(now+120-1, dht.lookup.timeout);
 	}
 
 	proto_end(&dht);

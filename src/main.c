@@ -174,16 +174,29 @@ int main(int argc, char** argv) {
 	// Init the lookup
 	struct lookup *lookup = &dht.lookup;
 	{
-		lookup->timeout = 0;
+		lookup->timeout = time(NULL) + 120;
 		lookup->target = (struct nodeid){.inner={0x19b8a941, 0x38fa0191, 0x1403fac2, 0x581000ab, 0x19583cda}};
 
+		for(size_t i = 0; i < 8; i++) {
+			lookup->closest_addr[i].port = 0;
+		}
+
+		struct message* message_cursor = outbuff;
+		// Issue the first round of requests manually
 		struct entry* entry[8];
 		int found = routing_closest(&lookup->target, sizeof(entry)/sizeof(entry[0]), entry);
-		assert(found == 8);
 		for(size_t i = 0; i < found; i++) {
-			lookup->closest[i] = entry[i]->id;
-			lookup->closest_addr[i] = entry[i]->addr;
+			struct sockaddr_in dest = {
+				.sin_family = AF_INET,
+				.sin_addr = {entry[i]->addr.ip},
+				.sin_port = entry[i]->addr.port,
+			};
+
+			int rc = send_lookup(&dht, &lookup->target, time(NULL), (struct sockaddr*)&dest, sizeof(struct sockaddr_in), &(struct msgbuff){&message_cursor, outbuff + OUTBOX_SIZE});
+			assert(rc == 0);
 		}
+
+		flush_messages(dht.sfd, outbuff, message_cursor);
 	}
 
 #define RECV_BUFF_SIZE 4096
