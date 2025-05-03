@@ -161,8 +161,8 @@ int main(int argc, char** argv) {
 		dht.self = myID;
 	}
 
-	routing_update_metrics();
 	metric_init();
+	routing_update_metrics();
 
 	size_t outLen;
 	const char *id = base64_encode((unsigned char*)myID.inner_b, 20, &outLen);
