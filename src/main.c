@@ -161,6 +161,7 @@ int main(int argc, char** argv) {
 		dht.self = myID;
 	}
 
+	routing_update_metrics();
 	metric_init();
 
 	size_t outLen;
@@ -172,32 +173,8 @@ int main(int argc, char** argv) {
 	flush_messages(dht.sfd, outbuff, message_cursor);
 
 	// Init the lookup
-	struct lookup *lookup = &dht.lookup;
-	{
-		lookup->timeout = time(NULL) + 120;
-		lookup->target = (struct nodeid){.inner={0x19b8a941, 0x38fa0191, 0x1403fac2, 0x581000ab, 0x19583cda}};
-
-		for(size_t i = 0; i < 8; i++) {
-			lookup->closest_addr[i].port = 0;
-		}
-
-		struct message* message_cursor = outbuff;
-		// Issue the first round of requests manually
-		struct entry* entry[8];
-		int found = routing_closest(&lookup->target, sizeof(entry)/sizeof(entry[0]), entry);
-		for(size_t i = 0; i < found; i++) {
-			struct sockaddr_in dest = {
-				.sin_family = AF_INET,
-				.sin_addr = {entry[i]->addr.ip},
-				.sin_port = entry[i]->addr.port,
-			};
-
-			int rc = send_lookup(&dht, &lookup->target, time(NULL), (struct sockaddr*)&dest, sizeof(struct sockaddr_in), &(struct msgbuff){&message_cursor, outbuff + OUTBOX_SIZE});
-			assert(rc == 0);
-		}
-
-		flush_messages(dht.sfd, outbuff, message_cursor);
-	}
+	dht.lookup.target = (struct nodeid){.inner={0x19b8a941, 0x38fa0191, 0x1403fac2, 0x581000ab, 0x19583cda}};
+	dht.lookup.state = OP_EMPTY;
 
 #define RECV_BUFF_SIZE 4096
 	char buff_storage[RECV_BUFF_SIZE+1];

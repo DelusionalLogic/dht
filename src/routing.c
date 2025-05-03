@@ -8,7 +8,9 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include <arpa/inet.h>
+#include <prom_metric_sample_histogram.h>
 
 // The DHT routing table has a keyspace of 0 -- 2^160 split into buckets of 8.
 // When a bucket becomes full, we split it in half. As we further expand the
@@ -54,6 +56,24 @@ void routing_init(struct nodeid* myid) {
 	myID = pTable->myID;
 
 	routing_flush();
+}
+
+void routing_update_metrics() {
+	char buf[4]; // Largest value is 157 + \0
+
+	struct entry *entry = pTable->table;
+	for(uint8_t i = 0; i < RT_IDBITS-RT_BBITS; i++) {
+		sprintf(buf, "%d", i);
+
+		uint8_t filled = 0;
+		for(uint8_t j = 0; j < RT_BSIZE; j++) {
+			filled += entry->set;
+			entry++;
+		}
+
+		prom_gauge_set(routing_table_occupied, filled, (const char*[]){buf});
+	}
+	dbg("Update metrics!!");
 }
 
 void routing_flush() {
@@ -159,6 +179,7 @@ void routing_remove(struct nodeid* id) {
 
 	entry->set = false;
 	entry->expire = 0;
+    routing_update_metrics();
 }
 
 bool routing_interested(struct nodeid* id) {
@@ -295,3 +316,4 @@ void routing_status(int* filled, int* size, double* load_factor, size_t load_fac
 		load_factor[i] /= per_bucket + is_overflow;
 	}
 }
+

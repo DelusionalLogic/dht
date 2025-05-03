@@ -21,7 +21,15 @@ struct tokens {
 	size_t head;
 };
 
+enum Operation {
+	OP_EMPTY,
+	OP_PENDING,
+	OP_ACTIVE,
+	OP_COMPLETED,
+};
+
 struct lookup {
+	enum Operation state;
 	struct nodeid target;
 
 	struct nodeid closest[8];

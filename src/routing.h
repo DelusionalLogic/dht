@@ -37,6 +37,7 @@ extern struct entry *table;
 extern int table_size;
 
 void routing_init(struct nodeid* myid);
+void routing_update_metrics();
 void routing_flush();
 bool routing_interested(struct nodeid* id);
 bool routing_offer(struct nodeid* id, struct entry **dest);

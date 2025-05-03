@@ -701,9 +701,19 @@ void test_lookup_response() {
 	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
 	routing_init(&dht.self);
 
-	
-	// There's no requirement that nodes we issue lookups against are in our
-	// routing table. We therefore don't insert anything in there.
+	{
+		// The initial round of requests for the lookup looks in the routing table.
+		// We could do a whole song and dance of getting stuff in there, or just
+		// assume that that part works. We just assume.
+		struct nodeid other = {.inner={0x43424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
+		struct entry *entry;
+		TEST_ASSERT_TRUE(routing_offer(&other, &entry));
+		entry->addr = (struct addr){
+			.ip = 0xFFFFFFFF,
+			.port = 1,
+		};
+		entry->expire = now + PROTO_UNCTM;
+	}
 
 	{
 		struct message* message_cursor = outbuff;
@@ -712,34 +722,22 @@ void test_lookup_response() {
 	}
 	now += 10;
 	
-	// There's no fixed api for issuing a lookup command. We just fill in the
-	// structure and issue the requests
 	{
+		// We start the lookup by filling in the struct and setting the state
 		struct lookup *lookup = &dht.lookup;
-		lookup->timeout = now;
 		lookup->target = (struct nodeid){.inner={0x61616161, 0x61616161, 0x61616161, 0x61616161, 0x61616161}};
+		lookup->state = OP_PENDING;
 
-		for(size_t i = 0; i < 8; i++) {
-			// Setting the port to 0 indicates that this slot is unallocated
-			lookup->closest_addr[i].port = 0;
-		}
-	}
-
-	{
-		// After setting up the command, we issue a request to a node.
-		remote = (struct sockaddr_in){
-			.sin_family = AF_INET,
-			.sin_addr = {0xFFFFFFFF},
-			.sin_port = 1,
-		};
 		struct message* message_cursor = outbuff;
-		int rc = send_lookup(&dht, &dht.lookup.target, now, (struct sockaddr*)&remote, sizeof(remote), &(struct msgbuff){&message_cursor, outbuff+2});
+		int rc = proto_run(&dht, NULL, 0, (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+2);
 
 		TEST_ASSERT_EQUAL(rc, 0);
 		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
 		TEST_ASSERT_EQUAL(91, outbuff[0].payload_len);
 		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t1:11:y1:qe", outbuff[0].payload, 91);
-		TEST_ASSERT_EQUAL(dht.lookup.timeout, now);
+		TEST_ASSERT_EQUAL(now+120, dht.lookup.timeout);
+
+		memcpy(&remote, &outbuff[0].dest, sizeof(remote));
 	}
 	now += 1;
 
@@ -752,7 +750,7 @@ void test_lookup_response() {
 		int rc = proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+2);
 
 		TEST_ASSERT_EQUAL(rc, 0);
-		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[0], "CBBBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("CBBBBBBBBBBBBBBBBBBB", &dht.lookup.closest[0], 20);
 
 		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
 		TEST_ASSERT_EQUAL(91, outbuff[0].payload_len);
@@ -805,6 +803,17 @@ void test_lookup_response() {
 		// Timeout isn't updated since we didn't send anything
 		// @FRAGILE this has to match the step size of now
 		TEST_ASSERT_EQUAL(now+120-1, dht.lookup.timeout);
+	}
+
+	// No other packets arrive for this lookup command and it should time out
+	now += 119;
+
+	{
+		// 15 minutes later a timeout is fired
+		struct message* message_cursor = outbuff;
+		proto_run(&dht, NULL, 0, (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+2);
+
+		TEST_ASSERT_EQUAL(OP_COMPLETED, dht.lookup.state);
 	}
 
 	proto_end(&dht);

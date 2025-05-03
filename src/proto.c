@@ -282,6 +282,8 @@ PROCESS_REPONSE(lookup_response) {
 		fatal("Response too short");
 	}
 
+	assert(cont->lookup->state == OP_ACTIVE);
+
 	struct nodeid id;
 	uint8_t nodes_len;
 	struct nodeid nodes[8];
@@ -586,6 +588,7 @@ PROCESS_REPONSE(getclient_response) {
 			entry->addr.ip = ipv4->sin_addr.s_addr;
 			entry->addr.port = ipv4->sin_port;
 			entry->expire = now + PROTO_UNCTM;
+			routing_update_metrics();
 		} else {
 			dbg("We are no longer interested");
 		}
@@ -899,6 +902,33 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			prom_counter_inc(keepalive_count, NULL);
 			oldest->expire = 0;
 			routing_oldest(&oldest);
+		}
+
+		if(dht->lookup.state == OP_PENDING) {
+			dht->lookup.timeout = now + 120;
+
+			for(size_t i = 0; i < 8; i++) {
+				dht->lookup.closest_addr[i].port = 0;
+			}
+
+			// Issue the first round of requests
+			struct entry* entry[8];
+			int found = routing_closest(&dht->lookup.target, sizeof(entry)/sizeof(entry[0]), entry);
+			for(size_t i = 0; i < found; i++) {
+				struct sockaddr_in dest = {
+					.sin_family = AF_INET,
+					.sin_addr = {entry[i]->addr.ip},
+					.sin_port = entry[i]->addr.port,
+				};
+
+				int rc = send_lookup(dht, &dht->lookup.target, time(NULL), (struct sockaddr*)&dest, sizeof(struct sockaddr_in), &msgbuff);
+				assert(rc == 0);
+			}
+
+			dht->lookup.state = OP_ACTIVE;
+			prom_counter_inc(lookup_count, NULL);
+		} else if(dht->lookup.state == OP_ACTIVE && dht->lookup.timeout <= now) {
+			dht->lookup.state = OP_COMPLETED;
 		}
 
 		// @HACK 0 means unitialized, only happens in tests

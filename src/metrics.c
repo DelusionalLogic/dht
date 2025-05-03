@@ -18,6 +18,8 @@ prom_gauge_t *activeNodes = NULL;
 prom_gauge_t *requestsInFlight = NULL;
 prom_counter_t *retries = NULL;
 prom_counter_t *keepalive_count = NULL;
+prom_counter_t *lookup_count = NULL;
+prom_gauge_t *routing_table_occupied = NULL;
 
 enum MHD_Result promhttp_handler(
 	void *cls,
@@ -200,6 +202,24 @@ void metric_init() {
 			"Number of times a node has been pinged due to inactivity",
 			0,
 			NULL
+		)
+	);
+
+	lookup_count = prom_collector_registry_must_register_metric(
+		prom_counter_new(
+			"dht_lookup_count",
+			"Number of lookup commands issued",
+			0,
+			NULL
+		)
+	);
+
+	routing_table_occupied = prom_collector_registry_must_register_metric(
+		prom_gauge_new(
+			"dht_routing_occupancy",
+			"Number of nodes in each routing bucket",
+			1,
+			(const char *[]) {"dist"}
 		)
 	);
 }

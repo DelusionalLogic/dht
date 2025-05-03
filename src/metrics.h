@@ -22,6 +22,9 @@ extern prom_counter_t *retries;
 extern prom_counter_t *keepalive_count;
 
 extern prom_counter_t *requestsProcessed;
+extern prom_counter_t *lookup_count;
+
+extern prom_gauge_t *routing_table_occupied;
 
 void metric_init();
 void metric_end();
