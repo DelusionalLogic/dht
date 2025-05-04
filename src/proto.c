@@ -736,7 +736,7 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 	} else if(type == CT_QUERY) { // Must be a query
 		if(transaction == NULL)
 			fatal("No transaction in request");
-		if(transaction_len > 16) {
+		if(transaction_len > 64) {
 			prom_counter_inc(queries, (const char *[]){query, "discard"});
 			err("DISCARD: Transaction ID is too long");
 			return 0;
@@ -951,7 +951,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 
 	enum commandType type = CT_UNK;
 	bool transaction_set = false;
-	char transaction[64];
+	char transaction[65];
 	size_t transaction_len;
 	bool query_set = false;
 	char query[64];
@@ -976,7 +976,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			case 1: {
 				// Skip the key
 				bcur_next(&bcursor, 1);
-				if(bcursor.readhead->size > 64-1)
+				if(bcursor.readhead->size > 64)
 					fatal("Transaction string too long");
 
 				transaction_set = true;
