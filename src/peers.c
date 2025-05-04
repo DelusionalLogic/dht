@@ -202,5 +202,6 @@ void peer_update_metrics() {
 	prom_gauge_set(hash_next_expire, next_expire, NULL);
 	assert(computed_load == peer_table_load);
 
+	prom_gauge_set(hashes_size, peer_table_size, NULL);
 	prom_gauge_set(current_hashes, (double)peer_table_load, NULL);
 }

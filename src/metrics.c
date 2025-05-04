@@ -10,6 +10,7 @@ prom_counter_t *meta = NULL;
 prom_counter_t *peers = NULL;
 prom_gauge_t *current_hashes = NULL;
 prom_counter_t *hashes = NULL;
+prom_gauge_t *hashes_size = NULL;
 prom_counter_t *hash_expired = NULL;
 prom_gauge_t *hash_next_expire = NULL;
 prom_counter_t *queries = NULL;
@@ -127,6 +128,15 @@ void metric_init() {
 		prom_counter_new(
 			"dht_hashes_total",
 			"Number of hashes currently stored",
+			0,
+			NULL
+		)
+	);
+
+	hashes_size = prom_collector_registry_must_register_metric(
+		prom_gauge_new(
+			"dht_hashes_size",
+			"InfoHash table capacity",
 			0,
 			NULL
 		)
