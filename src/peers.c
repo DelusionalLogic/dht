@@ -54,7 +54,11 @@ static int resize(size_t new_size) {
 		struct peer_entry* new_entry = NULL;
 		find(new_table, new_size, &entry->key, &new_entry);
 
-		assert(!new_entry->set);
+		if(new_entry->set) {
+			// This should never happen but sometimes does
+			dbg("WARN: Dropping duplicate peer table entry as part of resize");
+			continue;
+		}
 		*new_entry = *entry;
 	}
 
