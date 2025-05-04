@@ -14,7 +14,6 @@ prom_counter_t *hash_expired = NULL;
 prom_counter_t *queries = NULL;
 prom_counter_t *requests = NULL;
 prom_histogram_t *offered = NULL;
-prom_gauge_t *activeNodes = NULL;
 prom_gauge_t *requestsInFlight = NULL;
 prom_counter_t *retries = NULL;
 prom_counter_t *keepalive_count = NULL;
@@ -182,15 +181,6 @@ void metric_init() {
 			"dht_offered",
 			"Nodes seen and considered for the routing table",
 			prom_histogram_buckets_linear(0, 1, 157),
-			0,
-			NULL
-		)
-	);
-
-	activeNodes = prom_collector_registry_must_register_metric(
-		prom_gauge_new(
-			"dht_active_nodes",
-			"Nodes active in the routing table",
 			0,
 			NULL
 		)
