@@ -70,9 +70,6 @@ void save_config() {
 	if(fwrite(table, sizeof(struct entry), table_size, config) != table_size)
 		fatal("Couldn't write state");
 
-	long pos = ftell(config);
-	dbg("Routing stops at 0x%04lX", pos);
-
 	if(fwrite(&peer_table_size, sizeof(peer_table_size), 1, config) != 1)
 		fatal("Couldn't write peer table size");
 	if(fwrite(&peer_table_load, sizeof(peer_table_load), 1, config) != 1)
@@ -117,7 +114,6 @@ int read_config() {
 }
 
 void flush_messages(int sfd, struct message* cursor, const struct message* const end) {
-	dbg("Flushing %ld pending messages", end - cursor);
 	prom_counter_add(requests, end - cursor, NULL);
 	for(; cursor < end; cursor++) {
 		//now reply the client with the same data
@@ -235,13 +231,11 @@ int main(int argc, char** argv) {
 		rc = proto_run(&dht, buff, recv_len, (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+OUTBOX_SIZE);
 		flush_messages(dht.sfd, outbuff, message_cursor);
 
-		dbg("Writing out config");
 		save_config();
 	}
 
 	proto_end(&dht);
 	metric_end();
-	dbg("Writing out config");
 	save_config();
 
 	return rc;
