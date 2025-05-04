@@ -198,10 +198,8 @@ void peer_update_metrics() {
 		if(now < peer_table[i].last_seen) dbg("%d was seen after now? (%ld < %ld)", i, now, peer_table[i].last_seen);
 
 		time_t entry_expire = peer_table[i].last_seen + HASH_TIMEOUT;
-		if(difftime(now, entry_expire) < 0.0) {
-			next_expire = entry_expire < next_expire ? entry_expire : next_expire;
-			continue;
-		}
+		if(difftime(now, entry_expire) < 0.0)
+			next_expire = (next_expire == -1 || entry_expire < next_expire) ? entry_expire : next_expire;
 	}
 	prom_gauge_set(hash_next_expire, next_expire, NULL);
 
