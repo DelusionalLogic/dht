@@ -150,18 +150,12 @@ void get_peers(struct infohash* infohash, struct addr **peers, size_t *peers_len
 }
 
 void expire_hashes(time_t now) {
-	time_t next_expire = -1;
-
 	assert(peer_table_load < peer_table_size);
 	for(size_t i = 0; i < peer_table_size; i++) {
 		struct peer_entry *entry = &peer_table[i];
 		if(!entry->set) continue;
 
-		time_t entry_expire = entry->last_seen + HASH_TIMEOUT;
-		if(difftime(now, entry_expire) < 0.0) {
-			next_expire = entry_expire < next_expire ? entry_expire : next_expire;
-			continue;
-		}
+		if(difftime(now, entry->last_seen + HASH_TIMEOUT) < 0.0) continue;
 
 		// Find the last hash that collides with us
 		uint64_t entry_hash = hash(&entry->key, peer_table_size);
@@ -192,17 +186,24 @@ void expire_hashes(time_t now) {
 		prom_counter_inc(hash_expired, NULL);
 	}
 
-	prom_gauge_set(hash_next_expire, next_expire, NULL);
 	peer_update_metrics();
 	check_duplicates();
 }
 
 void peer_update_metrics() {
 	time_t now = time(NULL);
+	time_t next_expire = -1;
 	for(size_t i = 0; i < peer_table_size; i++) {
 		if(peer_table[i].set) continue;
 		if(now < peer_table[i].last_seen) dbg("%d was seen after now? (%ld < %ld)", i, now, peer_table[i].last_seen);
+
+		time_t entry_expire = peer_table[i].last_seen + HASH_TIMEOUT;
+		if(difftime(now, entry_expire) < 0.0) {
+			next_expire = entry_expire < next_expire ? entry_expire : next_expire;
+			continue;
+		}
 	}
+	prom_gauge_set(hash_next_expire, next_expire, NULL);
 
 	prom_gauge_set(current_hashes, (double)peer_table_load, NULL);
 }
