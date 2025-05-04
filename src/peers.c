@@ -193,8 +193,10 @@ void expire_hashes(time_t now) {
 void peer_update_metrics() {
 	time_t now = time(NULL);
 	time_t next_expire = -1;
+	size_t computed_load = 0;
 	for(size_t i = 0; i < peer_table_size; i++) {
-		if(peer_table[i].set) continue;
+		if(!peer_table[i].set) continue;
+		computed_load++;
 		if(now < peer_table[i].last_seen) dbg("%d was seen after now? (%ld < %ld)", i, now, peer_table[i].last_seen);
 
 		time_t entry_expire = peer_table[i].last_seen + HASH_TIMEOUT;
@@ -202,6 +204,7 @@ void peer_update_metrics() {
 			next_expire = (next_expire == -1 || entry_expire < next_expire) ? entry_expire : next_expire;
 	}
 	prom_gauge_set(hash_next_expire, next_expire, NULL);
+	assert(computed_load == peer_table_load);
 
 	prom_gauge_set(current_hashes, (double)peer_table_load, NULL);
 }
