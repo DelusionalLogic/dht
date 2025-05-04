@@ -37,3 +37,4 @@ int add_peer(struct infohash* infohash, struct addr* peer, time_t now);
 void get_peers(struct infohash* infohash, struct addr **peers, size_t *peers_len);
 
 void expire_hashes(time_t now);
+void peer_update_metrics();

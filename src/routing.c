@@ -73,7 +73,12 @@ void routing_update_metrics() {
 
 		prom_gauge_set(routing_table_occupied, filled, (const char*[]){buf});
 	}
-	dbg("Update metrics!!");
+
+	time_t reasonable = time(NULL) + 120;
+	for(size_t i = 0; i < RT_SIZE; i++) {
+		if(pTable->table[i].set) continue;
+		if(reasonable < pTable->table[i].expire) dbg("%d will expire quite far into the future after now? (%ld < %ld)", i, reasonable, pTable->table[i].expire);
+	}
 }
 
 void routing_flush() {

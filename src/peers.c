@@ -115,7 +115,6 @@ int add_peer(struct infohash* infohash, struct addr* peer, time_t now) {
 	if(!entry->set) {
 		entry->set = true;
 		entry->key = *infohash;
-		entry->last_seen = now;
 		peer_table_load++;
 		peer_status.hashes++;
 		prom_counter_inc(hashes, NULL);
@@ -190,4 +189,12 @@ void expire_hashes(time_t now) {
 
 	check_duplicates();
 	prom_gauge_set(current_hashes, (double)peer_table_load, NULL);
+}
+
+void peer_update_metrics() {
+	time_t now = time(NULL);
+	for(size_t i = 0; i < peer_table_size; i++) {
+		if(peer_table[i].set) continue;
+		if(now < peer_table[i].last_seen) dbg("%d was seen after now? (%ld < %ld)", i, now, peer_table[i].last_seen);
+	}
 }
