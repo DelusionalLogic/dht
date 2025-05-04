@@ -61,7 +61,7 @@ void sigint_handler(int sig) {
 #define CONF_ENO 1
 
 void save_config() {
-	FILE* config = fopen("conf.dmp", "w");
+	FILE* config = fopen("conf.dmp.tmp", "w");
 	if(config == NULL)
 		fatal("Couldn't open config for writing");
 
@@ -77,8 +77,11 @@ void save_config() {
 	if(fwrite(peer_table, sizeof(struct peer_entry), peer_table_size, config) != peer_table_size)
 		fatal("Couldn't write peer table");
 
+	fflush(config);
 	if(fclose(config) != 0)
 		fatal("Couldn't close config file");
+
+	rename("conf.dmp.tmp", "conf.dmp");
 }
 
 int read_config() {
