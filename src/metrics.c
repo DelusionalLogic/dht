@@ -11,6 +11,7 @@ prom_counter_t *peers = NULL;
 prom_gauge_t *current_hashes = NULL;
 prom_counter_t *hashes = NULL;
 prom_counter_t *hash_expired = NULL;
+prom_gauge_t *hash_next_expire = NULL;
 prom_counter_t *queries = NULL;
 prom_counter_t *requests = NULL;
 prom_histogram_t *offered = NULL;
@@ -135,6 +136,15 @@ void metric_init() {
 		prom_counter_new(
 			"dht_hashes_expired_total",
 			"Number of hashes expired due to inactivity",
+			0,
+			NULL
+		)
+	);
+
+	hash_next_expire = prom_collector_registry_must_register_metric(
+		prom_gauge_new(
+			"dht_hashes_next_expire",
+			"Next time a hash expires",
 			0,
 			NULL
 		)
