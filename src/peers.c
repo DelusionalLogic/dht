@@ -32,6 +32,26 @@ static uint64_t hash(struct infohash* key, size_t size) {
 	return x % size;
 }
 
+int infohash_compar(const void* ar, const void* br) {
+	return memcmp(ar, br, sizeof(struct infohash));
+}
+
+static void check_duplicates() {
+	struct infohash *keys = calloc(peer_table_size, sizeof(struct infohash));
+	size_t keyi = 0;
+	for(size_t i = 0; i < peer_table_size; i++) {
+		if(!peer_table[i].set) continue;
+		keys[keyi++] = peer_table[i].key;
+	}
+
+	qsort(keys, keyi, sizeof(struct infohash), infohash_compar);
+	for(size_t i = 1; i < keyi; i++) {
+		if(keys[i].inner == keys[i-1].inner) {
+			fatal("Duplicate key found");
+		}
+	}
+}
+
 static void find(struct peer_entry* table, size_t size, struct infohash* infohash, struct peer_entry** entry) {
 	uint64_t key = hash(infohash, size);
 	do {
@@ -66,6 +86,8 @@ static int resize(size_t new_size) {
 
 	peer_table = new_table;
 	peer_table_size = new_size;
+
+	check_duplicates();
 	return 0;
 };
 
@@ -110,6 +132,8 @@ int add_peer(struct infohash* infohash, struct addr* peer, time_t now) {
 	prom_counter_inc(peers, NULL);
 
 	prom_gauge_set(current_hashes, (double)peer_table_load, NULL);
+
+	check_duplicates();
 	return 0;
 }
 
@@ -164,5 +188,6 @@ void expire_hashes(time_t now) {
 		prom_counter_inc(hash_expired, NULL);
 	}
 
+	check_duplicates();
 	prom_gauge_set(current_hashes, (double)peer_table_load, NULL);
 }
