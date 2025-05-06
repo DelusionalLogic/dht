@@ -73,12 +73,6 @@ void routing_update_metrics() {
 
 		prom_gauge_set(routing_table_occupied, filled, (const char*[]){buf});
 	}
-
-	time_t reasonable = time(NULL) + 120;
-	for(size_t i = 0; i < RT_SIZE; i++) {
-		if(pTable->table[i].set) continue;
-		if(reasonable < pTable->table[i].expire) dbg("%d will expire quite far into the future after now? (%ld < %ld)", i, reasonable, pTable->table[i].expire);
-	}
 }
 
 void routing_flush() {
@@ -297,6 +291,18 @@ void routing_oldest(struct entry** dest) {
 		if(difftime((*dest)->expire, entry->expire) > 0.0) {
 			*dest = entry;
 		}
+	}
+}
+
+void routing_reset_expire(time_t expire) {
+	for(struct entry* entry = pTable->table; entry < pTable->table+RT_SIZE; entry++){
+		if(!entry->set)
+			continue;
+
+		if(entry->expire != 0)
+			continue;
+
+		entry->expire = expire;
 	}
 }
 

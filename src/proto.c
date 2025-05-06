@@ -883,7 +883,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 		struct entry* oldest = NULL;
 		routing_oldest(&oldest);
 		while(oldest != NULL) {
-			if(difftime(now, oldest->expire) < 0)
+			if(difftime(now, oldest->expire) < 0.0)
 				break;
 
 			struct sockaddr_in dest = {0};

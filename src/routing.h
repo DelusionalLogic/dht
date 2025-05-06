@@ -43,6 +43,7 @@ bool routing_interested(struct nodeid* id);
 bool routing_offer(struct nodeid* id, struct entry **dest);
 void routing_oldest(struct entry** dest);
 size_t routing_closest(struct nodeid* needle, size_t n, struct entry** res);
+void routing_reset_expire(time_t expire);
 void routing_status(int* filled, int* size, double* load_factor, size_t load_factor_len);
 
 struct entry* routing_get(struct nodeid* id);

@@ -155,10 +155,13 @@ int main(int argc, char** argv) {
 			/* myID = (struct nodeid){.inner={0xebe9bbf1, 0x3cdba6b3, 0x993e0c87, 0x900d5e25, 0x00000000}}; */
 			routing_init(&myID);
 			allocate_hashtable();
+		} else {
+			routing_reset_expire(time(NULL) + PROTO_UNCTM);
 		}
 
 		dht.self = myID;
 	}
+
 
 	metric_init();
 	routing_update_metrics();
