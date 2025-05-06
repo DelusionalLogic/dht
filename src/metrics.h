@@ -9,6 +9,8 @@ extern prom_counter_t *bytesSent;
 
 extern prom_counter_t *meta;
 
+extern prom_gauge_t *wakeup_time;
+
 extern prom_counter_t *peers;
 extern prom_gauge_t *current_hashes;
 extern prom_counter_t *hashes;

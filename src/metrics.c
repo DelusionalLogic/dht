@@ -7,6 +7,8 @@ prom_counter_t *bytesRecv = NULL;
 prom_counter_t *bytesSent = NULL;
 
 prom_counter_t *meta = NULL;
+prom_gauge_t *wakeup_time = NULL;
+
 prom_counter_t *peers = NULL;
 prom_gauge_t *current_hashes = NULL;
 prom_counter_t *hashes = NULL;
@@ -103,6 +105,15 @@ void metric_init() {
 			"Meta information value is always 1",
 			1,
 			(const char *[]){ "nodeid" }
+		)
+	);
+
+	wakeup_time = prom_collector_registry_must_register_metric(
+		prom_gauge_new(
+			"dht_wakeup_time",
+			"Time for next wakeup",
+			1,
+			(const char *[]){ "component" }
 		)
 	);
 

@@ -825,19 +825,29 @@ static void recalulate_waketime(struct dht *dht) {
 	if(!dht->pause){
 		struct entry* oldest;
 		routing_oldest(&oldest);
-		if(oldest != NULL)
+		if(oldest != NULL) {
 			dht->wake = oldest->expire;
+			prom_gauge_set(wakeup_time, oldest->expire, (const char *[]){"routing"});
+		}
 	}
 
+	time_t req_timeout = 0;
 	for(int i = 0; i < MAX_INFLIGHT; i++) {
 		if(!dht->reqalloc[i])
 			continue;
 
 		time_t timeout = dht->requestdata[i].timeout;
-		if(dht->wake == 0 || (timeout != 0 && difftime(timeout, dht->wake) < 0))
-			dht->wake = timeout;
+		if(req_timeout == 0 || (timeout != 0 && difftime(timeout, req_timeout) < 0)) {
+			req_timeout = timeout;
+		}
 	}
 
+	prom_gauge_set(wakeup_time, req_timeout, (const char *[]){"requests"});
+	if(dht->wake == 0 || (req_timeout != 0 && difftime(req_timeout, dht->wake) < 0)) {
+		dht->wake = req_timeout;
+	}
+
+	prom_gauge_set(wakeup_time, dht->lookup.timeout, (const char *[]){"lookup"});
 	if(dht->wake == 0 || difftime(dht->lookup.timeout, dht->wake) < 0) {
 		dht->wake = dht->lookup.timeout;
 	}
