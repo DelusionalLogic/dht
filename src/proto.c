@@ -843,12 +843,12 @@ static void recalulate_waketime(struct dht *dht) {
 	}
 
 	prom_gauge_set(wakeup_time, req_timeout, (const char *[]){"requests"});
-	if(dht->wake == 0 || (req_timeout != 0 && difftime(req_timeout, dht->wake) < 0)) {
+	if(dht->wake == 0 || (req_timeout != 0 && difftime(req_timeout, dht->wake) < 0.0)) {
 		dht->wake = req_timeout;
 	}
 
 	prom_gauge_set(wakeup_time, dht->lookup.timeout, (const char *[]){"lookup"});
-	if(dht->wake == 0 || difftime(dht->lookup.timeout, dht->wake) < 0) {
+	if(dht->wake == 0 || (dht->lookup.timeout != 0 && difftime(dht->lookup.timeout, dht->wake) < 0)) {
 		dht->wake = dht->lookup.timeout;
 	}
 }
