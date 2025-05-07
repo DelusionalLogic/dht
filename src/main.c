@@ -156,6 +156,7 @@ int main(int argc, char** argv) {
 			routing_init(&myID);
 			allocate_hashtable();
 		} else {
+			routing_setid(&myID);
 			routing_reset_expire(time(NULL) + PROTO_UNCTM);
 		}
 

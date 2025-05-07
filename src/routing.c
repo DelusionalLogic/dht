@@ -58,6 +58,11 @@ void routing_init(struct nodeid* myid) {
 	routing_flush();
 }
 
+void routing_setid(struct nodeid *id) {
+	pTable->myID = *id;
+	myID = pTable->myID;
+}
+
 void routing_update_metrics() {
 	char buf[4]; // Largest value is 157 + \0
 
