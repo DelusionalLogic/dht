@@ -158,6 +158,7 @@ int main(int argc, char** argv) {
 		} else {
 			routing_setid(&myID);
 			routing_reset_expire(time(NULL) + PROTO_UNCTM);
+			routing_rebuild_table();
 		}
 
 		dht.self = myID;

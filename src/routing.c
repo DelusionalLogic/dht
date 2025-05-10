@@ -80,6 +80,23 @@ void routing_update_metrics() {
 	}
 }
 
+void routing_rebuild_table() {
+	struct entry table_swap[RT_SIZE];
+	memcpy(table_swap, pTable->table, sizeof(pTable->table));
+	routing_flush();
+
+	for(size_t i = 0; i < RT_SIZE; i++) {
+		if(!table_swap[i].set) continue;
+
+		struct entry *entry;
+		if(routing_offer(&table_swap[i].id, &entry)) {
+			*entry = table_swap[i];
+		} else {
+			dbg("Dropping a client since we already have enough in that bucket");
+		}
+	}
+}
+
 void routing_flush() {
 	memset(pTable->table, 0, sizeof(pTable->table));
 }
