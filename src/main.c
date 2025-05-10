@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
 
 	// Init the lookup
 	dht.lookup.target = (struct nodeid){.inner={0x19b8a941, 0x38fa0191, 0x1403fac2, 0x581000ab, 0x19583cda}};
-	dht.lookup.state = OP_EMPTY;
+	dht.lookup.state = OP_EMPTY; // We want this to run at some point.
 
 #define RECV_BUFF_SIZE 4096
 	char buff_storage[RECV_BUFF_SIZE+1];
@@ -191,7 +191,6 @@ int main(int argc, char** argv) {
 
 		if(next != 0) {
 			time_t sleepfor = next - time(NULL);
-			dbg("Set timeout to %ld", sleepfor);
 			struct timeval tv = {
 				.tv_sec = sleepfor,
 				.tv_usec = 0,
