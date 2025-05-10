@@ -144,6 +144,7 @@ int sockaddr_cmp(struct sockaddr* x, struct sockaddr* y) {
 bool alloc_req(struct dht* dht, uint16_t* reqId) {
 	for(size_t i = 0; i < MAX_INFLIGHT; i++) {
 		if(!dht->reqalloc[i]) {
+			prom_gauge_inc(requestsInFlight, NULL);
 			dht->reqalloc[i] = true;
 			*reqId = i;
 			return true;
@@ -647,6 +648,7 @@ void proto_begin(struct dht* dht, time_t now, struct message** output, const str
 	for(int i = 0; i < MAX_INFLIGHT; i++) {
 		dht->reqalloc[i] = false;
 	}
+	prom_gauge_set(requestsInFlight, 0, NULL);
 
 	dbgl_id(&dht->self);
 
@@ -729,6 +731,7 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 			return 0;
 		}
 
+		prom_gauge_inc(requestsInFlight, NULL);
 		dht->requestdata[reqId].fun = NULL;
 		dht->requestdata[reqId].timeout_fun = NULL;
 		dht->requestdata[reqId].timeout = 0;
@@ -878,6 +881,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 				return 0;
 			}
 			if(rc != PROTO_EDISC) {
+				prom_gauge_inc(requestsInFlight, NULL);
 				dht->requestdata[i].fun = NULL;
 				dht->requestdata[i].timeout_fun = NULL;
 				dht->requestdata[i].timeout = 0;
