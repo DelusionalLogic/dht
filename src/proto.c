@@ -734,6 +734,7 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 		dht->pause = false;
 		int rc = dht->requestdata[reqId].fun(dht, now, &dht->requestdata[reqId].cont, packet, packet_len, dht->sfd, (struct sockaddr*)remote, remote_len, msgbuff);
 		if(rc == PROTO_ENOREQ) {
+			prom_counter_inc(outbox_overflow, NULL);
 			dht->pause = true;
 		} else if(rc == PROTO_EDISC) {
 			return 0;
@@ -880,6 +881,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			int rc = dht->requestdata[i].timeout_fun(dht, &dht->self, now, &dht->requestdata[i].cont, &msgbuff);
 
 			if(rc == PROTO_ENOREQ) {
+				prom_counter_inc(outbox_overflow, NULL);
 				dht->pause = true;
 				recalulate_waketime(dht);
 				return 0;
@@ -905,6 +907,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			dest.sin_port = oldest->addr.port;
 			int rc = send_ping(dht, &oldest->id, now, false, (const struct sockaddr*)&dest, sizeof(dest), &msgbuff);
 			if(rc == PROTO_ENOREQ) {
+				prom_counter_inc(outbox_overflow, NULL);
 				dht->pause = true;
 				recalulate_waketime(dht);
 				return 0;

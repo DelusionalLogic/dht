@@ -26,6 +26,7 @@ extern prom_counter_t *keepalive_count;
 
 extern prom_counter_t *requestsProcessed;
 extern prom_counter_t *lookup_count;
+extern prom_counter_t *outbox_overflow;
 
 extern prom_gauge_t *routing_table_occupied;
 

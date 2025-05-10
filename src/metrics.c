@@ -23,6 +23,7 @@ prom_counter_t *retries = NULL;
 prom_counter_t *keepalive_count = NULL;
 prom_counter_t *lookup_count = NULL;
 prom_gauge_t *routing_table_occupied = NULL;
+prom_counter_t *outbox_overflow = NULL;
 
 enum MHD_Result promhttp_handler(
 	void *cls,
@@ -241,6 +242,15 @@ void metric_init() {
 			"Number of nodes in each routing bucket",
 			1,
 			(const char *[]) {"dist"}
+		)
+	);
+
+	outbox_overflow = prom_collector_registry_must_register_metric(
+		prom_counter_new(
+			"dht_outbox_overflow",
+			"Number of times the outbox has overflowed",
+			0,
+			NULL
 		)
 	);
 }
