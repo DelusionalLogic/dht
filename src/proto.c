@@ -919,8 +919,6 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 		}
 
 		if(dht->lookup.state == OP_PENDING) {
-			dht->lookup.timeout = now + 120;
-
 			for(size_t i = 0; i < 8; i++) {
 				dht->lookup.closest_addr[i].port = 0;
 			}
@@ -939,9 +937,11 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 				assert(rc == 0);
 			}
 
+			dht->lookup.timeout = now + 120;
 			dht->lookup.state = OP_ACTIVE;
 			prom_counter_inc(lookup_count, NULL);
 		} else if(dht->lookup.state == OP_ACTIVE && dht->lookup.timeout <= now) {
+			dht->lookup.timeout = now + 3600;
 			dht->lookup.state = OP_COMPLETED;
 		}
 

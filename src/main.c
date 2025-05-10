@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
 
 	// Init the lookup
 	dht.lookup.target = (struct nodeid){.inner={0x19b8a941, 0x38fa0191, 0x1403fac2, 0x581000ab, 0x19583cda}};
-	dht.lookup.state = OP_EMPTY; // We want this to run at some point.
+	dht.lookup.state = OP_PENDING; // We want this to run at some point.
 
 #define RECV_BUFF_SIZE 4096
 	char buff_storage[RECV_BUFF_SIZE+1];
@@ -237,6 +237,12 @@ int main(int argc, char** argv) {
 		time_t now = time(NULL);
 		rc = proto_run(&dht, buff, recv_len, (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+OUTBOX_SIZE);
 		flush_messages(dht.sfd, outbuff, message_cursor);
+
+		if(dht.lookup.state == OP_COMPLETED && difftime(dht.lookup.timeout, now) < 0.0) {
+			dbg("Restart LOOKUP");
+			// Restart the lookup periodically
+			dht.lookup.state = OP_PENDING;
+		}
 
 		save_config();
 	}
