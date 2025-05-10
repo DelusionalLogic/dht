@@ -153,6 +153,14 @@ bool alloc_req(struct dht* dht, uint16_t* reqId) {
 	return false;
 }
 
+void clear_req(struct dht *dht, uint16_t reqId) {
+	prom_gauge_dec(requestsInFlight, NULL);
+	dht->requestdata[reqId].fun = NULL;
+	dht->requestdata[reqId].timeout_fun = NULL;
+	dht->requestdata[reqId].timeout = 0;
+	dht->reqalloc[reqId] = false;
+}
+
 bool find_req(struct dht* dht, uint32_t transId, uint16_t* reqId) {
 	*reqId = transId;
 	return dht->reqalloc[transId];
@@ -731,11 +739,7 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 			return 0;
 		}
 
-		prom_gauge_inc(requestsInFlight, NULL);
-		dht->requestdata[reqId].fun = NULL;
-		dht->requestdata[reqId].timeout_fun = NULL;
-		dht->requestdata[reqId].timeout = 0;
-		dht->reqalloc[reqId] = false;
+		clear_req(dht, reqId);
 	} else if(type == CT_QUERY) { // Must be a query
 		if(transaction == NULL)
 			fatal("No transaction in request");
@@ -881,12 +885,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 				return 0;
 			}
 			if(rc != PROTO_EDISC) {
-				prom_gauge_inc(requestsInFlight, NULL);
-				dht->requestdata[i].fun = NULL;
-				dht->requestdata[i].timeout_fun = NULL;
-				dht->requestdata[i].timeout = 0;
-				dht->reqalloc[i] = false;
-
+				clear_req(dht, i);
 				dht->pause = false;
 			}
 		}
