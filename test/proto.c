@@ -234,9 +234,9 @@ void test_note_times_out() {
 		proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, remote_len, 5, &message_cursor, outbuff+2);
 	}
 
-	// 15 minutes later a timeout is fired
+	// later a timeout is fired
 	struct message* message_cursor = outbuff;
-	proto_run(&dht, NULL, 0, (struct sockaddr_in*)&remote, remote_len, 905, &message_cursor, outbuff+2);
+	proto_run(&dht, NULL, 0, (struct sockaddr_in*)&remote, remote_len, 1205, &message_cursor, outbuff+2);
 
 	// Which should create a retry ping and a ping for the (now) uncertain node
 	TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+2);

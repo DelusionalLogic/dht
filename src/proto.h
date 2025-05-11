@@ -46,7 +46,7 @@ int token_validate(struct tokens* tokens, time_t now, struct addr* remote, char*
 #define MAX_DISC 32
 #define MAX_INFLIGHT 128
 
-#define PROTO_UNCTM 60*5
+#define PROTO_UNCTM 60*20
 #define PROTO_TMOUT 30
 
 struct ping {
