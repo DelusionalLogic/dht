@@ -936,7 +936,14 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 				};
 
 				int rc = send_lookup(dht, &dht->lookup.target, time(NULL), (struct sockaddr*)&dest, sizeof(struct sockaddr_in), &msgbuff);
-				assert(rc == 0);
+				if(rc == PROTO_ENOREQ) {
+					prom_counter_inc(outbox_overflow, NULL);
+					dht->pause = true;
+					recalulate_waketime(dht);
+					return 0;
+				} else if(rc != 0) {
+					fatal("NOPE %d", rc);
+				}
 			}
 
 			dht->lookup.timeout = now + 120;
