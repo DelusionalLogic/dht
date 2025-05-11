@@ -291,7 +291,11 @@ PROCESS_REPONSE(lookup_response) {
 		fatal("Response too short");
 	}
 
-	assert(cont->lookup->state == OP_ACTIVE);
+	if(cont->lookup->state != OP_ACTIVE) {
+		// The lookup is not running so we have nowhere to dump the result.
+		// Just discard the packet
+		return PROTO_EDISC;
+	}
 
 	struct nodeid id;
 	uint8_t nodes_len;

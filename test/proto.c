@@ -745,16 +745,18 @@ void test_lookup_response() {
 		// The node responds. This should add it to our frontier since it's
 		// empty. It should also fan out the search into what it returns since
 		// we still have empty spots after adding this one.
-		char buff[] = "d1:y1:r1:t1:11:rd2:id20:CBBBBBBBBBBBBBBBBBBB5:nodes26:aBBBBBBBBBBBBBBBBBBB\xFF\xFF\xFF\xFF\x00\x01""ee";
+		char buff[] = "d1:y1:r1:t1:11:rd2:id20:CBBBBBBBBBBBBBBBBBBB5:nodes52:aBBBBBBBBBBBBBBBBBBB\xFF\xFF\xFF\xFF\x00\x01""aaaaBBBBBBBBBBBBBBBB\xFF\xFF\xFF\xFF\x00\x01""ee";
 		struct message* message_cursor = outbuff;
 		int rc = proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+2);
 
 		TEST_ASSERT_EQUAL(rc, 0);
 		TEST_ASSERT_EQUAL_CHAR_ARRAY("CBBBBBBBBBBBBBBBBBBB", &dht.lookup.closest[0], 20);
 
-		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+2);
 		TEST_ASSERT_EQUAL(91, outbuff[0].payload_len);
 		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t1:21:y1:qe", outbuff[0].payload, 91);
+		TEST_ASSERT_EQUAL(91, outbuff[1].payload_len);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t1:31:y1:qe", outbuff[1].payload, 91);
 		TEST_ASSERT_EQUAL(now+120, dht.lookup.timeout);
 
 		memcpy(&remote, &outbuff[0].dest, sizeof(remote));
@@ -814,6 +816,32 @@ void test_lookup_response() {
 		proto_run(&dht, NULL, 0, (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+2);
 
 		TEST_ASSERT_EQUAL(OP_COMPLETED, dht.lookup.state);
+		// Timeout was set
+		TEST_ASSERT_EQUAL(now+3600, dht.lookup.timeout);
+	}
+
+	now += 10;
+
+	{
+		// The slow node from before now _finally_ responds. At this point we
+		// have ended the lookup and shouldn't update it anymore, even if this
+		// is a really good match
+		char buff[] = "d1:y1:r1:t1:31:rd2:id20:aaaaBBBBBBBBBBBBBBBB5:nodes26:aaaaaaaaaaaaaaaaaaaB\xFF\xFF\xFF\xFF\x00\x01""ee";
+		struct message* message_cursor = outbuff;
+		int rc = proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+2);
+
+		TEST_ASSERT_EQUAL(rc, 0);
+		// We only need to check this once since we always pick the first slot
+		// with a given score. It's a little implementation dependant, but it
+		// beats having 8 asserts.
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[0], "aaaBBBBBBBBBBBBBBBBB", 20);
+
+		// And we didn't fan out to the new node since the lookup is done.
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff);
+
+		// Timeout shouldn't have been update either
+		// @FRAGILE this has to match the step size of now
+		TEST_ASSERT_EQUAL(now-10+3600, dht.lookup.timeout);
 	}
 
 	proto_end(&dht);
