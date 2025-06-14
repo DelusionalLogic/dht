@@ -881,7 +881,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			if(difftime(now, dht->requestdata[i].timeout) < 0)
 				continue;
 
-			int rc = PROTO_EDISC;
+			int rc = 0;
 			if(dht->requestdata[i].timeout_fun != NULL) {
 				prom_counter_inc(retries, NULL);
 				rc = dht->requestdata[i].timeout_fun(dht, &dht->self, now, &dht->requestdata[i].cont, &msgbuff);
