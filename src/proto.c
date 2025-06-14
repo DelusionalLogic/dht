@@ -227,7 +227,7 @@ int send_lookup(struct dht* dht, struct nodeid* target, time_t now, const struct
 	dht->requestdata[reqId].cont.lookup = &dht->lookup;
 
 	dht->requestdata[reqId].fun = &lookup_response;
-	dht->requestdata[reqId].timeout = 0;
+	dht->requestdata[reqId].timeout = now + PROTO_TMOUT;
 	dht->requestdata[reqId].timeout_fun = NULL;
 	memcpy(&dht->requestdata[reqId].addr, dest_addr, dest_len);
 	dht->requestdata[reqId].addr_len = dest_len;
@@ -881,8 +881,11 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			if(difftime(now, dht->requestdata[i].timeout) < 0)
 				continue;
 
-			prom_counter_inc(retries, NULL);
-			int rc = dht->requestdata[i].timeout_fun(dht, &dht->self, now, &dht->requestdata[i].cont, &msgbuff);
+			int rc = PROTO_EDISC;
+			if(dht->requestdata[i].timeout_fun != NULL) {
+				prom_counter_inc(retries, NULL);
+				rc = dht->requestdata[i].timeout_fun(dht, &dht->self, now, &dht->requestdata[i].cont, &msgbuff);
+			}
 
 			if(rc == PROTO_ENOREQ) {
 				prom_counter_inc(outbox_overflow, NULL);
