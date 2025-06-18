@@ -12,6 +12,13 @@ struct peer_entry* peer_table;
 size_t peer_table_size;
 size_t peer_table_load;
 
+static void dbgl_id(struct infohash* id) {
+	for(uint8_t i = 0; i < 5; i++) {
+		fprintf(stderr, "0x%08x ", id->inner[i]);
+	}
+}
+
+
 int allocate_hashtable() {
 	memset(&peer_status, 0, sizeof(struct peer_status));
 
@@ -74,7 +81,16 @@ static int resize(size_t new_size) {
 		struct peer_entry* new_entry = NULL;
 		find(new_table, new_size, &entry->key, &new_entry);
 
-		assert(!new_entry->set);
+		// If this new entry is already set, this infohash is already present
+		// somehow
+		if(new_entry->set) {
+			dbgl("Collision detected: ");
+			dbgl_id(&new_entry->key);
+			dbgl(" and ");
+			dbgl_id(&entry->key);
+			dbg();
+			abort();
+		}
 		*new_entry = *entry;
 	}
 
