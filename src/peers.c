@@ -14,7 +14,7 @@ size_t peer_table_load;
 
 static void dbgl_id(struct infohash* id) {
 	for(uint8_t i = 0; i < 5; i++) {
-		fprintf(stderr, "0x%08x ", id->inner[i]);
+		dbgl("0x%08x ", id->inner[i]);
 	}
 }
 
@@ -72,11 +72,12 @@ static int resize(size_t new_size) {
 	assert(new_size >= peer_table_load);
 
 	struct peer_entry* new_table = calloc(new_size, sizeof(struct peer_entry));
-	if(peer_table == NULL)
+	if(new_table == NULL)
 		return PEER_ENOMEM;
 
 	for(size_t i = 0; i < peer_table_size; i++) {
 		struct peer_entry* entry = &peer_table[i];
+		if(!entry->set) continue;
 
 		struct peer_entry* new_entry = NULL;
 		find(new_table, new_size, &entry->key, &new_entry);
