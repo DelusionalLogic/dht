@@ -163,7 +163,6 @@ int main(int argc, char** argv) {
 		dht.self = myID;
 	}
 
-
 	metric_init();
 	routing_update_metrics();
 	peer_update_metrics();

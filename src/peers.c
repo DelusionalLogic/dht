@@ -53,7 +53,7 @@ static void check_duplicates() {
 
 	qsort(keys, keyi, sizeof(struct infohash), infohash_compar);
 	for(size_t i = 1; i < keyi; i++) {
-		if(keys[i].inner == keys[i-1].inner) {
+		if(memcmp(&keys[i], &keys[i-1], sizeof(struct infohash)) == 0) {
 			fatal("Duplicate key found");
 		}
 	}
