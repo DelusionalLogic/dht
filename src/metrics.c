@@ -10,6 +10,7 @@ prom_counter_t *meta = NULL;
 prom_gauge_t *wakeup_time = NULL;
 
 prom_counter_t *peers = NULL;
+prom_counter_t *peers_fetched = NULL;
 prom_gauge_t *current_hashes = NULL;
 prom_counter_t *hashes = NULL;
 prom_gauge_t *hashes_size = NULL;
@@ -123,6 +124,15 @@ void metric_init() {
 		prom_counter_new(
 			"dht_peers_total",
 			"Number of total peers",
+			0,
+			NULL
+		)
+	);
+
+	peers_fetched = prom_collector_registry_must_register_metric(
+		prom_counter_new(
+			"dht_peers_retrieved",
+			"Number of peers retrieved from the table",
 			0,
 			NULL
 		)

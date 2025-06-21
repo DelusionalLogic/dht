@@ -12,6 +12,7 @@ extern prom_counter_t *meta;
 extern prom_gauge_t *wakeup_time;
 
 extern prom_counter_t *peers;
+extern prom_counter_t *peers_fetched;
 extern prom_gauge_t *current_hashes;
 extern prom_counter_t *hashes;
 extern prom_gauge_t *hashes_size;

@@ -157,8 +157,11 @@ void get_peers(struct infohash* infohash, struct addr **peers, size_t *peers_len
 		return;
 	}
 
+	assert(entry->value_len != 0);
+
 	*peers = entry->value;
 	*peers_len = entry->value_len;
+	prom_counter_add(peers_fetched, entry->value_len, NULL);
 }
 
 void expire_hashes(time_t now) {
