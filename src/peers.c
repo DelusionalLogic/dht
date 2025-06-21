@@ -18,7 +18,6 @@ static void dbgl_id(struct infohash* id) {
 	}
 }
 
-
 int allocate_hashtable() {
 	memset(&peer_status, 0, sizeof(struct peer_status));
 
@@ -170,31 +169,36 @@ void expire_hashes(time_t now) {
 
 		if(difftime(now, entry->last_seen + HASH_TIMEOUT) < 0.0) continue;
 
-		// Find the last hash that collides with us
-		uint64_t entry_hash = hash(&entry->key, peer_table_size);
-		size_t last_in_slot = i;
+		// The entry is expired, remove it from the table
+		// This is a standard linear probing hashtable removal. current_slot is
+		// the "hole" we are currently trying to fill in with something. in
+		// doing so we have to find the next connected slot that can go here
+		// (has a hash value smaller than the slot index) and copy it in. That
+		// leaves us with a new "hole" we then have to fill in.
+		// @PERF This is a little naive. In chains with a long series of
+		// matching hashes, we will end up copying each. We could probably
+		// speed that up a little by allowing reordering.
+		size_t current_hole = i;
+		size_t head = current_hole;
 		while(true) {
-			size_t next = (last_in_slot + 1) % peer_table_size;
-			assert(next != i);
+			head = (head + 1) % peer_table_size;
+			assert(head != i);
 
-			// There can't be holes in the chain
-			if(!peer_table[next].set) break;
+			// If there's nothing in the chain that can be copied into the
+			// "hole" then we're done. Everything we skipped can stay.
+			if(!peer_table[head].set) break;
 
-			// If the two hashes are different we've reached the end of the probe chain
-			uint64_t next_hash = hash(&peer_table[next].key, peer_table_size);
-			if(next_hash != entry_hash) break;
-
-			last_in_slot = next;
+			// Check if the head slot could have been placed here
+			uint64_t next_hash = hash(&peer_table[head].key, peer_table_size);
+			if(next_hash <= current_hole) {
+				// Then copy it over
+				peer_table[current_hole] = peer_table[head];
+				// And try to fill in this new "hole"
+				current_hole = head;
+			}
 		}
 
-		// If some hashes were chained on us, we copy the last one into our slot
-		if(last_in_slot != i) {
-			*entry = peer_table[last_in_slot];
-			entry = &peer_table[last_in_slot];
-		}
-
-		// Remove the slot
-		entry->set = false;
+		peer_table[current_hole].set = false;
 		peer_table_load--;
 		prom_counter_inc(hash_expired, NULL);
 	}

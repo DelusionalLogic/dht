@@ -106,17 +106,28 @@ void test_grows() {
 void test_expired() {
 	allocate_hashtable();
 
+	// @FRAGILE Theres a complication with linear probing where earlier
+	// displacements cause later slots to also displace. We are forcing that
+	// case here while making sure that the one we want to retain is the one
+	// displaced from the slot right after the ones that expire. That means the
+	// values of these infohashes are tightly coupled to the hash function.
+	// I don't have any way to assert that.
+
 	struct infohash sometorrent = {.inner={0x0034048f, 0x08000020, 0x00888880, 0x02008460, 0x0ab00521}};
-	struct infohash other = {.inner={0x0034048f, 0x08000020, 0x00888880, 0x02008470, 0x0ab00521}};
+	struct infohash samehash = {.inner={0x0034048f, 0x08000020, 0x00888880, 0x02008470, 0x0ab00521}};
+	struct infohash nexthash = {.inner={0x0034048f, 0x08000020, 0x00888880, 0x02008470, 0x0ab00522}};
 	struct addr addr = (struct addr){.ip = IP(128,0,0,1), .port = 0};
 	struct addr other_addr = (struct addr){.ip = IP(128,0,0,1), .port = 1};
 
 	int rc = add_peer(&sometorrent, &addr, 0);
 	TEST_ASSERT_EQUAL(0, rc);
-	rc = add_peer(&other, &addr, 0);
+	rc = add_peer(&samehash, &addr, 0);
+	TEST_ASSERT_EQUAL(0, rc);
+	rc = add_peer(&nexthash, &addr, 0);
 	TEST_ASSERT_EQUAL(0, rc);
 
-	rc = add_peer(&other, &other_addr, 1);
+	// Add a peer later, should refresh the hash
+	rc = add_peer(&nexthash, &other_addr, 2);
 	TEST_ASSERT_EQUAL(0, rc);
 
 	expire_hashes(HASH_TIMEOUT + 1);
@@ -132,7 +143,7 @@ void test_expired() {
 	{
 		struct addr* found;
 		size_t found_len;
-		get_peers(&other, &found, &found_len);
+		get_peers(&nexthash, &found, &found_len);
 		TEST_ASSERT_NOT_NULL(found);
 		TEST_ASSERT_EQUAL(2, found_len);
 	}
