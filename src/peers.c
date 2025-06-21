@@ -116,7 +116,7 @@ uint64_t next_pow2(uint64_t x) {
 int add_peer(struct infohash* infohash, struct addr* peer, time_t now) {
 	assert(peer_table_load < peer_table_size);
 
-	if(load_factor(peer_table_size, peer_table_load + 1) > 0.75) {
+	if(load_factor(peer_table_size, peer_table_load + 1) > 0.60) {
 		int rc = resize(peer_table_size * 2);
 		if(rc != 0) return rc;
 	}
