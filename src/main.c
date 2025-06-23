@@ -122,7 +122,7 @@ void flush_messages(int sfd, struct message* cursor, const struct message* const
 		//now reply the client with the same data
 		int rc = sendto(sfd, cursor->payload, cursor->payload_len, 0, (const struct sockaddr*)&cursor->dest, cursor->dest_len);
 		if (rc < 0) {
-			fatal("Failed to send message %m");
+			fatal("Failed to send message %d %m: %d", errno, cursor->dest_len);
 		}
 		prom_counter_add(bytesSent, cursor->payload_len, NULL);
 	}
