@@ -170,6 +170,7 @@ int main(int argc, char** argv) {
 	size_t outLen;
 	const char *id = base64_encode((unsigned char*)myID.inner_b, 20, &outLen);
 	prom_counter_inc(meta, (const char *[]){id});
+	free((char*)id);
 
 	struct message* message_cursor = outbuff;
 	proto_begin(&dht, time(NULL), &message_cursor, outbuff+32);
