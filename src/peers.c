@@ -56,6 +56,7 @@ static void check_duplicates() {
 			fatal("Duplicate key found");
 		}
 	}
+	free(keys);
 }
 
 static void find(struct peer_entry* table, size_t size, struct infohash* infohash, struct peer_entry** entry) {
