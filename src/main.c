@@ -176,6 +176,7 @@ int main(int argc, char** argv) {
 	proto_begin(&dht, time(NULL), &message_cursor, outbuff+32);
 	flush_messages(dht.sfd, outbuff, message_cursor);
 
+	time_t lookup_refresh = 0;
 	// Init the lookup
 	dht.lookup.target = (struct nodeid){.inner={0x19b8a941, 0x38fa0191, 0x1403fac2, 0x581000ab, 0x19583cda}};
 	dht.lookup.state = OP_PENDING; // We want this to run at some point.
@@ -188,6 +189,9 @@ int main(int argc, char** argv) {
 
 		bool timedout = false;
 		time_t next = dht.wake;
+		if(lookup_refresh != 0 && difftime(lookup_refresh, next) < 0.0) {
+			next = lookup_refresh;
+		}
 
 		if(next != 0) {
 			time_t sleepfor = next - time(NULL);
@@ -238,10 +242,16 @@ int main(int argc, char** argv) {
 		rc = proto_run(&dht, buff, recv_len, (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+OUTBOX_SIZE);
 		flush_messages(dht.sfd, outbuff, message_cursor);
 
-		if(dht.lookup.state == OP_COMPLETED && difftime(dht.lookup.timeout, now) < 0.0) {
-			dbg("Restart LOOKUP");
-			// Restart the lookup periodically
-			dht.lookup.state = OP_PENDING;
+		if(dht.lookup.state == OP_COMPLETED) {
+			if(lookup_refresh == 0) {
+				dbg("Lookup completed");
+				lookup_refresh = now + 3600;
+			} else if (difftime(lookup_refresh, now) < 0.0) {
+				dbg("Restart LOOKUP");
+				lookup_refresh = 0;
+				// Restart the lookup periodically
+				dht.lookup.state = OP_PENDING;
+			}
 		}
 
 		save_config();

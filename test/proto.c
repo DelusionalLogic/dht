@@ -735,7 +735,7 @@ void test_lookup_response() {
 		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+1);
 		TEST_ASSERT_EQUAL(91, outbuff[0].payload_len);
 		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t1:11:y1:qe", outbuff[0].payload, 91);
-		TEST_ASSERT_EQUAL(now+120, dht.lookup.timeout);
+		TEST_ASSERT_EQUAL(1, dht.lookup.outstanding);
 
 		memcpy(&remote, &outbuff[0].dest, sizeof(remote));
 	}
@@ -757,14 +757,14 @@ void test_lookup_response() {
 		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t1:21:y1:qe", outbuff[0].payload, 91);
 		TEST_ASSERT_EQUAL(91, outbuff[1].payload_len);
 		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t1:31:y1:qe", outbuff[1].payload, 91);
-		TEST_ASSERT_EQUAL(now+120, dht.lookup.timeout);
+		TEST_ASSERT_EQUAL(2, dht.lookup.outstanding); // Resolve 1, add 2
 
 		memcpy(&remote, &outbuff[0].dest, sizeof(remote));
 	}
 
 	// In actual use, we would have a lot more network/public api traffic here
 	// that would respond to some more pings. I don't want to write that code,
-	// so instead I'll just fill out some of the internal structured myself.
+	// so instead I'll just fill out some of the internal structures myself.
 	//
 	// What we are emulating is that a bunch of nodes responded before the one
 	// we just asserted above. Those nodes happened to be closer to the final
@@ -802,9 +802,7 @@ void test_lookup_response() {
 		// And we didn't fan out to the new node since it's already part of the current frontier
 		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff);
 
-		// Timeout isn't updated since we didn't send anything
-		// @FRAGILE this has to match the step size of now
-		TEST_ASSERT_EQUAL(now+120-1, dht.lookup.timeout);
+		TEST_ASSERT_EQUAL(1, dht.lookup.outstanding); // Resolve 1
 	}
 
 	// No other packets arrive for this lookup command and it should time out
@@ -816,8 +814,7 @@ void test_lookup_response() {
 		proto_run(&dht, NULL, 0, (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+2);
 
 		TEST_ASSERT_EQUAL(OP_COMPLETED, dht.lookup.state);
-		// Timeout was set
-		TEST_ASSERT_EQUAL(now+3600, dht.lookup.timeout);
+		TEST_ASSERT_EQUAL(0, dht.lookup.outstanding);
 	}
 
 	now += 10;
@@ -839,9 +836,7 @@ void test_lookup_response() {
 		// And we didn't fan out to the new node since the lookup is done.
 		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff);
 
-		// Timeout shouldn't have been update either
-		// @FRAGILE this has to match the step size of now
-		TEST_ASSERT_EQUAL(now-10+3600, dht.lookup.timeout);
+		TEST_ASSERT_EQUAL(0, dht.lookup.outstanding);
 	}
 
 	proto_end(&dht);

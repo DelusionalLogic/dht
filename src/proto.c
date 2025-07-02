@@ -173,6 +173,7 @@ PROCESS_REPONSE(getclient_response);
 PROCESS_TIMEOUT(getclient_timeout);
 
 PROCESS_REPONSE(lookup_response);
+PROCESS_TIMEOUT(lookup_timeout);
 
 // Number of nodeid bits
 #define IDBITS 160
@@ -224,11 +225,12 @@ int send_lookup(struct dht* dht, struct nodeid* target, time_t now, const struct
 	memcpy(&message->dest, dest_addr, dest_len);
 	message->dest_len = dest_len;
 
+	dht->lookup.outstanding++;
 	dht->requestdata[reqId].cont.lookup = &dht->lookup;
 
 	dht->requestdata[reqId].fun = &lookup_response;
 	dht->requestdata[reqId].timeout = now + PROTO_TMOUT;
-	dht->requestdata[reqId].timeout_fun = NULL;
+	dht->requestdata[reqId].timeout_fun = &lookup_timeout;
 	memcpy(&dht->requestdata[reqId].addr, dest_addr, dest_len);
 	dht->requestdata[reqId].addr_len = dest_len;
 
@@ -282,6 +284,17 @@ int send_ping(struct dht* dht, struct nodeid* expected, time_t now, bool node_is
 	return 0;
 }
 
+PROCESS_TIMEOUT(lookup_timeout) {
+	// @HACK: This really sucks. maybe we should just pass in the request id
+	size_t reqId = (typeof(dht->requestdata[0])*)((void*)cont - offsetof(typeof(dht->requestdata[0]), cont)) - dht->requestdata;
+
+	assert(cont->lookup->outstanding != 0);
+	dbg("Lookup request %ld times out", reqId);
+	cont->lookup->outstanding--;
+
+	return 0;
+}
+
 PROCESS_REPONSE(lookup_response) {
 	struct benc_node stream[256];
 	struct bcursor bcursor;
@@ -291,11 +304,8 @@ PROCESS_REPONSE(lookup_response) {
 		fatal("Response too short");
 	}
 
-	if(cont->lookup->state != OP_ACTIVE) {
-		// The lookup is not running so we have nowhere to dump the result.
-		// Just discard the packet
-		return PROTO_EDISC;
-	}
+	assert(cont->lookup->outstanding > 0);
+	assert(cont->lookup->state == OP_ACTIVE);
 
 	struct nodeid id;
 	uint8_t nodes_len;
@@ -448,14 +458,14 @@ PROCESS_REPONSE(lookup_response) {
 
 		int rc = send_lookup(dht, &cont->lookup->target, now, (struct sockaddr*)&dest, sizeof(struct sockaddr_in), msgbuff);
 		if(rc == PROTO_ENOREQ) {
-			return rc;
+			cont->lookup->outstanding--;
+			return PROTO_ENOREQ;
 		} else if(rc != 0) {
 			fatal("failed %d", rc);
 		}
-
-		cont->lookup->timeout = now + 120;
 	}
 
+	cont->lookup->outstanding--;
 	return 0;
 }
 
@@ -858,11 +868,6 @@ static void recalulate_waketime(struct dht *dht) {
 	if(dht->wake == 0 || (req_timeout != 0 && difftime(req_timeout, dht->wake) < 0.0)) {
 		dht->wake = req_timeout;
 	}
-
-	prom_gauge_set(wakeup_time, dht->lookup.timeout, (const char *[]){"lookup"});
-	if(dht->wake == 0 || (dht->lookup.timeout != 0 && difftime(dht->lookup.timeout, dht->wake) < 0)) {
-		dht->wake = dht->lookup.timeout;
-	}
 }
 
 int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* remote, socklen_t remote_len, time_t now, struct message** output, const struct message* const output_end) {
@@ -947,17 +952,16 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 					prom_counter_inc(outbox_overflow, NULL);
 					dht->pause = true;
 					recalulate_waketime(dht);
-					return 0;
+					break;
 				} else if(rc != 0) {
 					fatal("NOPE %d", rc);
 				}
 			}
 
-			dht->lookup.timeout = now + 120;
 			dht->lookup.state = OP_ACTIVE;
 			prom_counter_inc(lookup_count, NULL);
-		} else if(dht->lookup.state == OP_ACTIVE && dht->lookup.timeout <= now) {
-			dht->lookup.timeout = now + 3600;
+			dbg("Lookup started");
+		} else if(dht->lookup.state == OP_ACTIVE && dht->lookup.outstanding == 0) {
 			dht->lookup.state = OP_COMPLETED;
 		}
 

@@ -35,7 +35,7 @@ struct lookup {
 	struct nodeid closest[8];
 	struct addr closest_addr[8];
 
-	time_t timeout;
+	uint64_t outstanding;
 };
 
 void token_create(struct tokens* tokens, time_t now, struct addr* remote, char* token);
