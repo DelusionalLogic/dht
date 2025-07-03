@@ -256,7 +256,10 @@ int main(int argc, char** argv) {
 			}
 		}
 
-		save_config();
+		if(dht.dirtyconf) {
+			save_config();
+			dht.dirtyconf = false;
+		}
 	}
 
 	proto_end(&dht);

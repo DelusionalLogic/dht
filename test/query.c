@@ -25,7 +25,8 @@ void test_malformed_empty() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	bool dirtyconf;
+	int rc = handle_request(&self, &tokens, &dirtyconf, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
@@ -47,7 +48,8 @@ void test_malformed_only_dict_start() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	bool dirtyconf;
+	int rc = handle_request(&self, &tokens, &dirtyconf, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
@@ -69,7 +71,8 @@ void test_malformed_empty_args_key() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	bool dirtyconf;
+	int rc = handle_request(&self, &tokens, &dirtyconf, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
@@ -91,7 +94,8 @@ void test_malformed_wrong_args_type() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	bool dirtyconf;
+	int rc = handle_request(&self, &tokens, &dirtyconf, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
@@ -113,7 +117,8 @@ void test_malformed_empty_args() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	bool dirtyconf;
+	int rc = handle_request(&self, &tokens, &dirtyconf, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
@@ -135,7 +140,8 @@ void test_malformed_wrong_id_arg_type() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	bool dirtyconf;
+	int rc = handle_request(&self, &tokens, &dirtyconf, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
@@ -157,7 +163,8 @@ void test_malformed_wrong_id_length() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	bool dirtyconf;
+	int rc = handle_request(&self, &tokens, &dirtyconf, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EBADQ, rc);
 }
@@ -179,7 +186,8 @@ void test_ping() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, &tokens, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	bool dirtyconf;
+	int rc = handle_request(&self, &tokens, &dirtyconf, now, "ping", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(0, rc);
 	TEST_ASSERT_EQUAL(29, response_cursor - response);
@@ -203,7 +211,8 @@ void test_bad_method() {
 	char* response_cursor = response;
 	char* response_end = response + sizeof(response);
 
-	int rc = handle_request(&self, &tokens, now, "someWrongMethod", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
+	bool dirtyconf;
+	int rc = handle_request(&self, &tokens, &dirtyconf, now, "someWrongMethod", (struct sockaddr*)&src, sizeof(src), packet, packet_len, &response_cursor, response_end-response_cursor);
 
 	TEST_ASSERT_EQUAL(QUERY_EUNK, rc);
 }

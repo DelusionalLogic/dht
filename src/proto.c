@@ -479,6 +479,7 @@ PROCESS_TIMEOUT(getclient_timeout) {
 			return 0;
 
 		routing_remove(&cont->ping.remote_id);
+		dht->dirtyconf = true;
 		return 0;
 	}
 
@@ -611,6 +612,7 @@ PROCESS_REPONSE(getclient_response) {
 			entry->addr.ip = ipv4->sin_addr.s_addr;
 			entry->addr.port = ipv4->sin_port;
 			entry->expire = now + PROTO_UNCTM;
+			dht->dirtyconf = true;
 			routing_update_metrics();
 		} else {
 			dbg("We are no longer interested");
@@ -622,6 +624,7 @@ PROCESS_REPONSE(getclient_response) {
 		// removed while we are waiting for a response?
 		if(entry != NULL) {
 			entry->expire = now + PROTO_UNCTM;
+			dht->dirtyconf = true;
 		}
 	}
 
@@ -778,7 +781,7 @@ int handle_packet(struct dht* dht, time_t now, enum commandType type, char* tran
 		cursor += rc;
 
 		char respType = 'r';
-		rc = handle_request(&dht->self, &dht->tokens, now, query, (const struct sockaddr*)remote, remote_len, packet, packet_len, &cursor, end-cursor-1);
+		rc = handle_request(&dht->self, &dht->tokens, &dht->dirtyconf, now, query, (const struct sockaddr*)remote, remote_len, packet, packet_len, &cursor, end-cursor-1);
 		if(rc == QUERY_EUNK) {
 			prom_counter_inc(queries, (const char *[]){query, "unknown"});
 			// @FRAGILE: @HACK: Static offsets to fiddle with already written
@@ -929,6 +932,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 
 			prom_counter_inc(keepalive_count, NULL);
 			oldest->expire = 0;
+			dht->dirtyconf = true;
 			routing_oldest(&oldest);
 		}
 
@@ -969,7 +973,7 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 
 		// @HACK 0 means unitialized, only happens in tests
 		if(peer_table_size != 0) {
-			expire_hashes(now);
+			expire_hashes(now, &dht->dirtyconf);
 		}
 
 		recalulate_waketime(dht);

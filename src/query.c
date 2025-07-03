@@ -9,7 +9,7 @@
 #include <assert.h>
 #include <arpa/inet.h>
 
-int handle_request(struct nodeid* self, struct tokens *tokens, time_t now, const char* method, const struct sockaddr* src, socklen_t src_len, const char* packet, size_t packet_len, char** response, size_t response_len) {
+int handle_request(struct nodeid* self, struct tokens* tokens, bool *dirtyconf, time_t now, const char* method, const struct sockaddr* src, socklen_t src_len, const char* packet, size_t packet_len, char** response, size_t response_len) {
 	if(method == NULL) {
 		return QUERY_EBADQ;
 	}
@@ -472,6 +472,7 @@ int handle_request(struct nodeid* self, struct tokens *tokens, time_t now, const
 				src_addr.port = htons(port);
 			}
 			int rc = add_peer(&infohash, &src_addr, now);
+			*dirtyconf = true;
 			if(rc == PEER_EFULL) {
 			} else if(rc != 0) {
 				fatal("Could not add peer (%d)", rc);

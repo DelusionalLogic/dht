@@ -130,7 +130,8 @@ void test_expired() {
 	rc = add_peer(&nexthash, &other_addr, 2);
 	TEST_ASSERT_EQUAL(0, rc);
 
-	expire_hashes(HASH_TIMEOUT + 1);
+	bool dirtyconf;
+	expire_hashes(HASH_TIMEOUT + 1, &dirtyconf);
 
 	{
 		struct addr* found;

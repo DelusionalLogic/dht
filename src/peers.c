@@ -165,7 +165,7 @@ void get_peers(struct infohash* infohash, struct addr **peers, size_t *peers_len
 	prom_counter_add(peers_fetched, entry->value_len, NULL);
 }
 
-void expire_hashes(time_t now) {
+void expire_hashes(time_t now, bool *dirty) {
 	assert(peer_table_load < peer_table_size);
 	for(size_t i = 0; i < peer_table_size; i++) {
 		struct peer_entry *entry = &peer_table[i];
@@ -202,6 +202,7 @@ void expire_hashes(time_t now) {
 			}
 		}
 
+		*dirty = true;
 		peer_table[current_hole].set = false;
 		peer_table_load--;
 		prom_counter_inc(hash_expired, NULL);

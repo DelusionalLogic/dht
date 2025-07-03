@@ -78,6 +78,7 @@ struct dht {
 	int sfd;
 
 	bool pause;
+	bool dirtyconf;
 
 	bool reqalloc[MAX_INFLIGHT];
 	struct {
