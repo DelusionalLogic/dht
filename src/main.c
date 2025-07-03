@@ -180,6 +180,7 @@ int main(int argc, char** argv) {
 	// Init the lookup
 	dht.lookup.target = (struct nodeid){.inner={0x19b8a941, 0x38fa0191, 0x1403fac2, 0x581000ab, 0x19583cda}};
 	dht.lookup.state = OP_PENDING; // We want this to run at some point.
+	prom_gauge_set(lookup_state, dht.lookup.state, NULL);
 
 #define RECV_BUFF_SIZE 4096
 	char buff_storage[RECV_BUFF_SIZE+1];
@@ -251,6 +252,7 @@ int main(int argc, char** argv) {
 				lookup_refresh = 0;
 				// Restart the lookup periodically
 				dht.lookup.state = OP_PENDING;
+				prom_gauge_set(lookup_state, dht.lookup.state, NULL);
 			}
 		}
 

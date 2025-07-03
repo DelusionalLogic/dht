@@ -25,6 +25,7 @@ prom_counter_t *keepalive_count = NULL;
 prom_counter_t *lookup_count = NULL;
 prom_gauge_t *routing_table_occupied = NULL;
 prom_counter_t *outbox_overflow = NULL;
+prom_gauge_t *lookup_state = NULL;
 
 enum MHD_Result promhttp_handler(
 	void *cls,
@@ -264,6 +265,16 @@ void metric_init() {
 			NULL
 		)
 	);
+
+	lookup_state = prom_collector_registry_must_register_metric(
+		prom_gauge_new(
+			"dht_lookup_state",
+			"State of the lookup",
+			0,
+			NULL
+		)
+	);
+
 }
 
 void metric_end() {

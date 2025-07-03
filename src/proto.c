@@ -959,10 +959,12 @@ int proto_run(struct dht* dht, char* buff, size_t recv_len, struct sockaddr_in* 
 			}
 
 			dht->lookup.state = OP_ACTIVE;
+			prom_gauge_set(lookup_state, dht->lookup.state, NULL);
 			prom_counter_inc(lookup_count, NULL);
 			dbg("Lookup started");
 		} else if(dht->lookup.state == OP_ACTIVE && dht->lookup.outstanding == 0) {
 			dht->lookup.state = OP_COMPLETED;
+			prom_gauge_set(lookup_state, dht->lookup.state, NULL);
 		}
 
 		// @HACK 0 means unitialized, only happens in tests
