@@ -24,7 +24,8 @@ TEST_LIB_SOURCES = thirdparty/Unity/src/unity.c
 TEST_LIB_OBJS = $(TEST_LIB_SOURCES:%.c=$(OBJDIR)/%.o)
 TEST_LIB_DEPS = $(TEST_LIB_SOURCES:%.c=%.d)
 TEST_LIB_INCS = -Ithirdparty/Unity/src/
-TEST_LIB_CFLAGS = -DUNITY_INCLUDE_DOUBLE -lcurl
+TEST_LIB_CFLAGS = -DUNITY_INCLUDE_DOUBLE
+TEST_LIB_LIBS = -lcurl
 
 TEST_SOURCES = $(shell find $(TSTDIR) -name "*.c")
 TEST_EXES = $(TEST_SOURCES:%.c=$(OBJDIR)/%)
@@ -62,7 +63,7 @@ test: $(TEST_EXES)
 	$(foreach test,$(TEST_EXES),./$(test) &&) true
 
 $(OBJDIR)/test/%: $(APP_OBJS) $(TEST_LIB_OBJS) $(OBJDIR)/test/%.o $(OBJDIR)/test/%.runner.o
-	$(CC) $(LDFLAGS) $(TEST_LIB_CFLAGS) $(CFLAGS) -o $@ $^ $(LIBS)
+	$(CC) $(LDFLAGS) $(TEST_LIB_CFLAGS) $(CFLAGS) -o $@ $^ $(LIBS) $(TEST_LIB_LIBS)
 
 $(OBJDIR)/test/%.runner.c: test/%.c
 	@mkdir -p $(dir $@)

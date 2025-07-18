@@ -1,6 +1,6 @@
-FROM docker.io/alpine:3.21 AS build
+FROM registry.hub.docker.com/library/alpine:3.22 AS build
 
-RUN apk add --no-cache make gcc musl-dev cmake libmicrohttpd-dev ruby
+RUN apk add --no-cache curl-dev libcurl make gcc musl-dev cmake libmicrohttpd-dev ruby
 
 COPY . /app
 WORKDIR /app
@@ -12,7 +12,7 @@ RUN cd thirdparty/prometheus-client-c && \
 
 RUN make test dht
 
-FROM docker.io/alpine:3.21
+FROM registry.hub.docker.com/library/alpine:3.22
 RUN apk add --no-cache libmicrohttpd
 COPY --from=build /usr/local/lib/libprom.so /usr/lib/libprom.so
 
