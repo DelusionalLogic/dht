@@ -4,6 +4,7 @@
 #include "sha256.h"
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
 #define TOKEN_ITMO 20
 #define TOKEN_VTMO 60
@@ -26,6 +27,8 @@ enum Operation {
 	OP_PENDING,
 	OP_ACTIVE,
 	OP_COMPLETED,
+
+	OP_LEN,
 };
 
 struct lookup {
@@ -74,6 +77,8 @@ typedef PROCESS_REPONSE(resp);
 typedef PROCESS_TIMEOUT(tmout);
 
 struct dht {
+	pthread_mutex_t mutex;
+
 	struct nodeid self;
 	int sfd;
 

@@ -56,7 +56,7 @@ void benc_print(const struct benc_node* stream, size_t stream_len) {
 		switch(cursor->type) {
 			case BNT_INT:
 				indent(depth);
-				printf("INT %.*s\n", cursor->size, cursor->loc);
+				printf("INT %.*s\n", (int)cursor->size, cursor->loc);
 				break;
 			case BNT_STRING:
 				indent(depth);
@@ -69,7 +69,7 @@ void benc_print(const struct benc_node* stream, size_t stream_len) {
 				}
 				printf("STR ");
 				if(allprint) {
-					printf("%.*s", cursor->size, cursor->loc);
+					printf("%.*s", (int)cursor->size, cursor->loc);
 				} else {
 					for (const unsigned char* c = (const unsigned char*)cursor->loc; c < (unsigned char*)(cursor->loc + cursor->size); c++) {
 						printf("\\x%02X", *c);

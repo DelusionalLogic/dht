@@ -398,7 +398,15 @@ PROCESS_REPONSE(lookup_response) {
 	for(size_t i = 0; i < 8; i++) {
 		if(cont->lookup->closest_addr[i].port == 0) {
 			match_i = i;
-			match_score = UINT8_MAX; // Bogus value to signal that we found something
+			match_score = UINT8_MAX; // Bogus value to signal that we found an empty slot
+			break;
+		}
+
+		if(memcmp(&cont->lookup->closest[i], &id, sizeof(struct nodeid)) == 0) {
+			// If the nodeid is already present in the lookup, we just ignore
+			// it completely
+			match_score = 0;
+			match_i = i;
 			break;
 		}
 
@@ -417,16 +425,6 @@ PROCESS_REPONSE(lookup_response) {
 		cont->lookup->closest_addr[match_i].port = ipv4->sin_port;
 	} else {
 		dbg("Discarding response from node behind the frontier");
-	}
-
-	uint8_t worst_match = UINT8_MAX;
-	for(size_t i = 0; i < 8; i++) {
-		if(cont->lookup->closest_addr[i].port == 0) {
-			worst_match = 0;
-			break;
-		}
-
-		worst_match = MIN(worst_match, prefix(&cont->lookup->closest[i], &cont->lookup->target));
 	}
 
 	// Fan out the search if the nodes are better than the worst one in the frontier

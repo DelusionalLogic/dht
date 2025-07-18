@@ -2,6 +2,8 @@
 #include "peers.h"
 #include "log.h"
 #include "metrics.h"
+#include "base64.h"
+#include "api.h"
 
 #include <time.h>
 #include <sys/time.h>
@@ -11,47 +13,6 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-
-static char encoding_table[] = {
-	'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
-	'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-	'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
-	'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
-	'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
-	'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
-	'w', 'x', 'y', 'z', '0', '1', '2', '3',
-	'4', '5', '6', '7', '8', '9', '+', '/'
-};
-static int mod_table[] = {0, 2, 1};
-
-
-char *base64_encode(const unsigned char *data, size_t input_length, size_t *output_length) {
-	*output_length = 4 * ((input_length + 2) / 3);
-
-	char *encoded_data = malloc(*output_length + 1);
-	assert(encoded_data != NULL);
-
-	for (int i = 0, j = 0; i < input_length;) {
-		uint32_t octet_a = i < input_length ? (unsigned char)data[i++] : 0;
-		uint32_t octet_b = i < input_length ? (unsigned char)data[i++] : 0;
-		uint32_t octet_c = i < input_length ? (unsigned char)data[i++] : 0;
-
-		uint32_t triple = (octet_a << 0x10) + (octet_b << 0x08) + octet_c;
-
-		encoded_data[j++] = encoding_table[(triple >> 3 * 6) & 0x3F];
-		encoded_data[j++] = encoding_table[(triple >> 2 * 6) & 0x3F];
-		encoded_data[j++] = encoding_table[(triple >> 1 * 6) & 0x3F];
-		encoded_data[j++] = encoding_table[(triple >> 0 * 6) & 0x3F];
-	}
-
-	for (int i = 0; i < mod_table[input_length % 3]; i++) {
-		encoded_data[*output_length - 1 - i] = '=';
-	}
-
-	encoded_data[*output_length] = 0;
-
-	return encoded_data;
-}
 
 static volatile bool killed = false;
 void sigint_handler(int sig) {
@@ -122,6 +83,7 @@ void flush_messages(int sfd, struct message* cursor, const struct message* const
 		//now reply the client with the same data
 		int rc = sendto(sfd, cursor->payload, cursor->payload_len, 0, (const struct sockaddr*)&cursor->dest, cursor->dest_len);
 		if (rc < 0) {
+			dbg("dest_len %d", cursor->dest_len);
 			fatal("Failed to send message %d %m: %d", errno, cursor->dest_len);
 		}
 		prom_counter_add(bytesSent, cursor->payload_len, NULL);
@@ -145,6 +107,11 @@ int main(int argc, char** argv) {
 		fatal("Couldn't set signal handler");
 
 	struct dht dht = {0};
+	pthread_mutexattr_t mutexattr;
+	pthread_mutexattr_init(&mutexattr);
+	pthread_mutexattr_settype(&mutexattr, PTHREAD_MUTEX_ERRORCHECK);
+	pthread_mutex_init(&dht.mutex, &mutexattr);
+	pthread_mutex_lock(&dht.mutex);
 	{
 		routing_init(NULL);
 		int rc = read_config();
@@ -152,7 +119,6 @@ int main(int argc, char** argv) {
 			for(uint16_t i = 0; i < sizeof(myID.inner_b); i++) {
 				myID.inner_b[i] = rand();
 			}
-			/* myID = (struct nodeid){.inner={0xebe9bbf1, 0x3cdba6b3, 0x993e0c87, 0x900d5e25, 0x00000000}}; */
 			routing_init(&myID);
 			allocate_hashtable();
 		} else {
@@ -164,6 +130,7 @@ int main(int argc, char** argv) {
 	}
 
 	metric_init();
+	api_init(&dht);
 	routing_update_metrics();
 	peer_update_metrics();
 
@@ -176,12 +143,6 @@ int main(int argc, char** argv) {
 	proto_begin(&dht, time(NULL), &message_cursor, outbuff+32);
 	flush_messages(dht.sfd, outbuff, message_cursor);
 
-	time_t lookup_refresh = 0;
-	// Init the lookup
-	dht.lookup.target = (struct nodeid){.inner={0x19b8a941, 0x38fa0191, 0x1403fac2, 0x581000ab, 0x19583cda}};
-	dht.lookup.state = OP_PENDING; // We want this to run at some point.
-	prom_gauge_set(lookup_state, dht.lookup.state, NULL);
-
 #define RECV_BUFF_SIZE 4096
 	char buff_storage[RECV_BUFF_SIZE+1];
 	int rc = 0;
@@ -190,10 +151,6 @@ int main(int argc, char** argv) {
 
 		bool timedout = false;
 		time_t next = dht.wake;
-		if(lookup_refresh != 0 && difftime(lookup_refresh, next) < 0.0) {
-			next = lookup_refresh;
-		}
-
 		if(next != 0) {
 			time_t sleepfor = next - time(NULL);
 			struct timeval tv = {
@@ -212,7 +169,9 @@ int main(int argc, char** argv) {
 		socklen_t remote_len = sizeof(remote);
 		ssize_t recv_len;
 		if(!timedout) {
+			pthread_mutex_unlock(&dht.mutex);
 			recv_len = recvfrom(dht.sfd, buff, RECV_BUFF_SIZE, 0, (struct sockaddr *)&remote, &remote_len);
+			pthread_mutex_lock(&dht.mutex);
 			if(recv_len == -1) {
 				// This is really strange. The man pages say we should be getting
 				// an ETIMEDOUT here, but instead linux gives us this.
@@ -243,19 +202,6 @@ int main(int argc, char** argv) {
 		rc = proto_run(&dht, buff, recv_len, (struct sockaddr_in*)&remote, remote_len, now, &message_cursor, outbuff+OUTBOX_SIZE);
 		flush_messages(dht.sfd, outbuff, message_cursor);
 
-		if(dht.lookup.state == OP_COMPLETED) {
-			if(lookup_refresh == 0) {
-				dbg("Lookup completed");
-				lookup_refresh = now + 3600;
-			} else if (difftime(lookup_refresh, now) < 0.0) {
-				dbg("Restart LOOKUP");
-				lookup_refresh = 0;
-				// Restart the lookup periodically
-				dht.lookup.state = OP_PENDING;
-				prom_gauge_set(lookup_state, dht.lookup.state, NULL);
-			}
-		}
-
 		if(dht.dirtyconf) {
 			save_config();
 			dht.dirtyconf = false;
@@ -263,6 +209,7 @@ int main(int argc, char** argv) {
 	}
 
 	proto_end(&dht);
+	api_end();
 	metric_end();
 	save_config();
 

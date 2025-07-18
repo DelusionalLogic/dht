@@ -745,19 +745,21 @@ void test_lookup_response() {
 		// The node responds. This should add it to our frontier since it's
 		// empty. It should also fan out the search into what it returns since
 		// we still have empty spots after adding this one.
-		char buff[] = "d1:y1:r1:t1:11:rd2:id20:CBBBBBBBBBBBBBBBBBBB5:nodes52:aBBBBBBBBBBBBBBBBBBB\xFF\xFF\xFF\xFF\x00\x01""aaaaBBBBBBBBBBBBBBBB\xFF\xFF\xFF\xFF\x00\x01""ee";
+		char buff[] = "d1:y1:r1:t1:11:rd2:id20:CBBBBBBBBBBBBBBBBBBB5:nodes78:aBBBBBBBBBBBBBBBBBBB\xFF\xFF\xFF\xFF\x00\x01""aaaaBBBBBBBBBBBBBBBB\xFF\xFF\xFF\xFF\x00\x01""aaaBBBBBBBBBBBBBBBBB\xFF\xFF\xFF\xFF\x00\x01""ee";
 		struct message* message_cursor = outbuff;
-		int rc = proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+2);
+		int rc = proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+10);
 
 		TEST_ASSERT_EQUAL(rc, 0);
 		TEST_ASSERT_EQUAL_CHAR_ARRAY("CBBBBBBBBBBBBBBBBBBB", &dht.lookup.closest[0], 20);
 
-		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+2);
+		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff+3);
 		TEST_ASSERT_EQUAL(91, outbuff[0].payload_len);
 		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t1:21:y1:qe", outbuff[0].payload, 91);
 		TEST_ASSERT_EQUAL(91, outbuff[1].payload_len);
 		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t1:31:y1:qe", outbuff[1].payload, 91);
-		TEST_ASSERT_EQUAL(2, dht.lookup.outstanding); // Resolve 1, add 2
+		TEST_ASSERT_EQUAL(91, outbuff[2].payload_len);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY("d1:ad2:id20:BBBBBBBBBBBBBBBBBBBB6:target20:aaaaaaaaaaaaaaaaaaaae1:q9:find_node1:t1:41:y1:qe", outbuff[2].payload, 91);
+		TEST_ASSERT_EQUAL(3, dht.lookup.outstanding); // Resolve 1, add 3
 
 		memcpy(&remote, &outbuff[0].dest, sizeof(remote));
 	}
@@ -770,18 +772,49 @@ void test_lookup_response() {
 	// we just asserted above. Those nodes happened to be closer to the final
 	// target than the outstanding request we have going on.
 	{
-		for(size_t i = 0; i < 8; i++) {
-			dht.lookup.closest[i] = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
-			// The first two bytes match
-			dht.lookup.closest[i].inner_b[0] = 'a';
-			dht.lookup.closest[i].inner_b[1] = 'a';
-			dht.lookup.closest[i].inner_b[2] = 'a' + i;
-
-			dht.lookup.closest_addr[i].ip = 0;
-			dht.lookup.closest_addr[i].port = 1;
-		}
+		dht.lookup.closest[0] = (struct nodeid){.inner_b={"aaaBBBBBBBBBBBBBBBBB"}};
+		dht.lookup.closest_addr[0] = (struct addr){.ip = 0, .port = 1};
+		dht.lookup.closest[1] = (struct nodeid){.inner_b={"aabBBBBBBBBBBBBBBBBB"}};
+		dht.lookup.closest_addr[1] = (struct addr){.ip = 0, .port = 1};
+		dht.lookup.closest[2] = (struct nodeid){.inner_b={"aacBBBBBBBBBBBBBBBBB"}};
+		dht.lookup.closest_addr[2] = (struct addr){.ip = 0, .port = 1};
+		dht.lookup.closest[3] = (struct nodeid){.inner_b={"aadBBBBBBBBBBBBBBBBB"}};
+		dht.lookup.closest_addr[3] = (struct addr){.ip = 0, .port = 1};
+		dht.lookup.closest[4] = (struct nodeid){.inner_b={"aaeBBBBBBBBBBBBBBBBB"}};
+		dht.lookup.closest_addr[4] = (struct addr){.ip = 0, .port = 1};
+		dht.lookup.closest[5] = (struct nodeid){.inner_b={"aafBBBBBBBBBBBBBBBBB"}};
+		dht.lookup.closest_addr[5] = (struct addr){.ip = 0, .port = 1};
+		dht.lookup.closest[6] = (struct nodeid){.inner_b={"aagBBBBBBBBBBBBBBBBB"}};
+		dht.lookup.closest_addr[6] = (struct addr){.ip = 0, .port = 1};
+		dht.lookup.closest[7] = (struct nodeid){.inner_b={"aahBBBBBBBBBBBBBBBBB"}};
+		dht.lookup.closest_addr[7] = (struct addr){.ip = 0, .port = 1};
 	}
 	now += 1;
+
+	{
+		// The whole omitted interactive above included a response to the 3rd
+		// message from the last send, but before that, we fanned out from
+		// another node that knew about it too. This means we still have
+		// a leftover pending request to that node waiting for us. When that
+		// comes in, we should notice that, although it's better than some of
+		// our other candidates, it's also already there. It should therefore
+		// not be included
+		char buff[] = "d1:y1:r1:t1:41:rd2:id20:aaaBBBBBBBBBBBBBBBBB5:nodes0:ee";
+		struct message* message_cursor = outbuff;
+		int rc = proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+2);
+
+		TEST_ASSERT_EQUAL(rc, 0);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[0], "aaaBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[1], "aabBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[2], "aacBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[3], "aadBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[4], "aaeBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[5], "aafBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[6], "aagBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[7], "aahBBBBBBBBBBBBBBBBB", 20);
+
+		TEST_ASSERT_EQUAL(2, dht.lookup.outstanding); // Resolve 1
+	}
 
 	{
 		// The node now finally responds, but woops only the first byte of its
@@ -794,10 +827,14 @@ void test_lookup_response() {
 		int rc = proto_run(&dht, buff, sizeof(buff), (struct sockaddr_in*)&remote, sizeof(remote), now, &message_cursor, outbuff+2);
 
 		TEST_ASSERT_EQUAL(rc, 0);
-		// We only need to check this once since we always pick the first slot
-		// with a given score. It's a little implementation dependant, but it
-		// beats having 8 asserts.
 		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[0], "aaaBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[1], "aabBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[2], "aacBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[3], "aadBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[4], "aaeBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[5], "aafBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[6], "aagBBBBBBBBBBBBBBBBB", 20);
+		TEST_ASSERT_EQUAL_CHAR_ARRAY(&dht.lookup.closest[7], "aahBBBBBBBBBBBBBBBBB", 20);
 
 		// And we didn't fan out to the new node since it's already part of the current frontier
 		TEST_ASSERT_EQUAL_PTR(message_cursor, outbuff);
