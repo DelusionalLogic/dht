@@ -189,15 +189,13 @@ static enum MHD_Result handler(
 
 			if(conn->state == OP_PENDING) {
 				if(!conn->target_set) {
-					pthread_mutex_unlock(&api->dht->mutex);
-					return MHD_NO;
+					goto err;
 				}
 
 				if(api->dht->lookup.state != OP_EMPTY) {
-					pthread_mutex_unlock(&api->dht->mutex);
 					// @COMPL We should return some nice error message to the user
 					// here about how they lost a race
-					return MHD_NO;
+					goto err;
 				}
 
 				// Start a lookup
@@ -206,26 +204,26 @@ static enum MHD_Result handler(
 				prom_gauge_set(lookup_state, api->dht->lookup.state, NULL);
 			} else if(conn->state == OP_EMPTY) {
 				if(conn->target_set) {
-					pthread_mutex_unlock(&api->dht->mutex);
-					return MHD_NO;
+					goto err;
 				}
 
 				if(api->dht->lookup.state != OP_COMPLETED) {
-					pthread_mutex_unlock(&api->dht->mutex);
 					// @COMPL We should return some nice error message to the user
 					// here about how they lost a race
-					return MHD_NO;
+					goto err;
 				}
 
 				api->dht->lookup.state = OP_EMPTY;
 				prom_gauge_set(lookup_state, api->dht->lookup.state, NULL);
 			} else {
-				pthread_mutex_unlock(&api->dht->mutex);
-				return MHD_NO;
+				goto err;
 			}
 
 			ret = queue_lookup_response(api, connection, &response, true);
 			goto end;
+err:
+			pthread_mutex_unlock(&api->dht->mutex);
+			return MHD_NO;
 		}
 	}
 
