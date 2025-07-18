@@ -185,8 +185,6 @@ static enum MHD_Result handler(
 			return MHD_YES;
 		} else {
 
-			pthread_mutex_lock(&api->dht->mutex);
-
 			if(conn->state == OP_PENDING) {
 				if(!conn->target_set) {
 					response = MHD_create_response_from_buffer_static(0, NULL);
@@ -194,11 +192,15 @@ static enum MHD_Result handler(
 					goto end;
 				}
 
+				pthread_mutex_lock(&api->dht->mutex);
+
 				if(api->dht->lookup.state != OP_EMPTY) {
+					pthread_mutex_unlock(&api->dht->mutex);
 					response = MHD_create_response_from_buffer_static(0, NULL);
 					ret = MHD_queue_response(connection, MHD_HTTP_CONFLICT, response);
 					goto end;
 				}
+
 
 				// Start a lookup
 				memcpy(&api->dht->lookup.target, &conn->target, sizeof(struct nodeid));
@@ -211,7 +213,10 @@ static enum MHD_Result handler(
 					goto end;
 				}
 
-				if(api->dht->lookup.state != OP_COMPLETED) {
+				pthread_mutex_lock(&api->dht->mutex);
+
+				if(api->dht->lookup.state != OP_COMPLETED && api->dht->lookup.state != OP_EMPTY) {
+					pthread_mutex_unlock(&api->dht->mutex);
 					response = MHD_create_response_from_buffer_static(0, NULL);
 					ret = MHD_queue_response(connection, MHD_HTTP_CONFLICT, response);
 					goto end;

@@ -147,32 +147,35 @@ void test_lookup_get() {
 	dht.self = (struct nodeid){.inner={0x42424242, 0x42424242, 0x42424242, 0x42424242, 0x42424242}};
 	api_init(&dht);
 
-	curlRes = curl_easy_setopt(curl, CURLOPT_URL, "http://localhost:6982/lookup");
-	TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
-
-	curlRes = curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_memory);
-	TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
-
-	struct memory body = {0};
-	curlRes = curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
-	TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
-
-	curlRes = curl_easy_perform(curl);
-	TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
-
+	long code;
 	char *ct;
-	curlRes = curl_easy_getinfo(curl, CURLINFO_CONTENT_TYPE, &ct);
-	TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
+	struct memory body = {0};
+	{
+		curlRes = curl_easy_setopt(curl, CURLOPT_URL, "http://localhost:6982/lookup");
+		TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
 
-	TEST_ASSERT_EQUAL_STRING("application/json", ct);
+		curlRes = curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_memory);
+		TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
 
-	TEST_ASSERT_EQUAL_STRING(
-		"{ "
-			"\"state\": \"empty\" "
-		"}", 
-		body.body
-	);
-	body = (struct memory){0};
+		curlRes = curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
+		TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
+
+		curlRes = curl_easy_perform(curl);
+		TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
+
+		curlRes = curl_easy_getinfo(curl, CURLINFO_CONTENT_TYPE, &ct);
+		TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
+
+		TEST_ASSERT_EQUAL_STRING("application/json", ct);
+
+		TEST_ASSERT_EQUAL_STRING(
+			"{ "
+				"\"state\": \"empty\" "
+			"}", 
+			body.body
+		);
+		body = (struct memory){0};
+	}
 
 	{
 		curlRes = curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
@@ -205,6 +208,31 @@ void test_lookup_get() {
 		);
 		body = (struct memory){0};
 	}
+
+	{
+		curlRes = curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+		TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
+
+		curlRes = curl_easy_setopt(curl, CURLOPT_READFUNCTION, read_from_memory);
+		TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
+
+		struct memory req_body = {
+			.body = "{\"state\": \"empty\"}",
+			.size = strlen(req_body.body),
+		};
+		curlRes = curl_easy_setopt(curl, CURLOPT_READDATA, &req_body);
+		TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
+
+		curlRes = curl_easy_perform(curl);
+		TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
+
+		curlRes = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+		TEST_ASSERT_EQUAL(CURLE_OK, curlRes);
+		TEST_ASSERT_EQUAL(409, code);
+
+		body = (struct memory){0};
+	}
+
 
 	// The protocol does whatever and complete the lookup
 	dht.lookup.state = OP_COMPLETED;
