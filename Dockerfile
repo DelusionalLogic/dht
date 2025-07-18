@@ -22,4 +22,4 @@ VOLUME /data
 EXPOSE 6981
 WORKDIR /data
 
-ENTRYPOINT /app/dht
+ENTRYPOINT ["/app/dht"]
