@@ -189,13 +189,15 @@ static enum MHD_Result handler(
 
 			if(conn->state == OP_PENDING) {
 				if(!conn->target_set) {
-					goto err;
+					response = MHD_create_response_from_buffer_static(0, NULL);
+					ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
+					goto end;
 				}
 
 				if(api->dht->lookup.state != OP_EMPTY) {
-					// @COMPL We should return some nice error message to the user
-					// here about how they lost a race
-					goto err;
+					response = MHD_create_response_from_buffer_static(0, NULL);
+					ret = MHD_queue_response(connection, MHD_HTTP_CONFLICT, response);
+					goto end;
 				}
 
 				// Start a lookup
@@ -204,26 +206,27 @@ static enum MHD_Result handler(
 				prom_gauge_set(lookup_state, api->dht->lookup.state, NULL);
 			} else if(conn->state == OP_EMPTY) {
 				if(conn->target_set) {
-					goto err;
+					response = MHD_create_response_from_buffer_static(0, NULL);
+					ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
+					goto end;
 				}
 
 				if(api->dht->lookup.state != OP_COMPLETED) {
-					// @COMPL We should return some nice error message to the user
-					// here about how they lost a race
-					goto err;
+					response = MHD_create_response_from_buffer_static(0, NULL);
+					ret = MHD_queue_response(connection, MHD_HTTP_CONFLICT, response);
+					goto end;
 				}
 
 				api->dht->lookup.state = OP_EMPTY;
 				prom_gauge_set(lookup_state, api->dht->lookup.state, NULL);
 			} else {
-				goto err;
+				response = MHD_create_response_from_buffer_static(0, NULL);
+				ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
+				goto end;
 			}
 
 			ret = queue_lookup_response(api, connection, &response, true);
 			goto end;
-err:
-			pthread_mutex_unlock(&api->dht->mutex);
-			return MHD_NO;
 		}
 	}
 
